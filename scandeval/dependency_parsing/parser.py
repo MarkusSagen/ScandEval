@@ -148,9 +148,9 @@ class BiaffineDependencyParser(nn.Module):
         dep_h = self.dep_mlp_h(x)
 
         # [batch_size, seq_len, seq_len]
-        s_head = self.head_attn(x, x)
+        s_head = self.head_attn(head_d, head_h)
 
         # [batch_size, seq_len, seq_len, n_deps]
-        s_dep = self.dep_attn(x, x)
+        s_dep = self.dep_attn(dep_d, dep_h)
 
         return s_head, s_dep
