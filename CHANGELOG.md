@@ -17,6 +17,8 @@ and this project adheres to
 - Increased the `patience` parameter for early stopping, from
   `2 + 1000 // len(train)` to `2 + 10000 // len(train)`. This is due to the
   fact that models tended to stop training too early.
+- When downloading SpaCy models, which is done via pip, then the model package
+  is no longer cached, freeing up some disk space.
 
 ### Fixed
 - Enforcing at most one GPU, as training on multiple GPUs led to tensors being
