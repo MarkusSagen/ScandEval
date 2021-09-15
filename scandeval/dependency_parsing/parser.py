@@ -22,8 +22,8 @@ class AutoModelForDependencyParsing(AutoModelForTokenClassification):
                         num_deps: int = 37,
                         head_dim: int = 500,
                         dep_dim: int = 100,
-                        head_dropout: float = 0.33,
-                        dep_dropout: float = 0.33,
+                        head_dropout: float = 0.,
+                        dep_dropout: float = 0.,
                         scale: float = 1.,
                         **kwargs):
 
