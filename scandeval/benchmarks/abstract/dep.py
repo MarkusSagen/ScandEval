@@ -244,11 +244,9 @@ class DepBenchmark(BaseBenchmark, ABC):
                                for pred in dep_raw_predictions]
             dep_labels = [id2label[lbl] for lbl in dep_labels]
 
-            breakpoint()
-
             # Next merge the predictions and labels, so that we have a pair of
             # predicted/gold labels for each token
-            heads = range(max(head_predictions.max(), head_labels.max()))
+            heads = range(max(head_predictions.max(), head_labels.max()) + 1)
             deps = list(set(dep_labels).union(set(dep_predictions)))
             head_deps = it.product(heads, deps)
             str_to_int = {str((head, dep)): idx
