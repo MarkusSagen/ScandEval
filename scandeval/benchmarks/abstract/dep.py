@@ -244,6 +244,8 @@ class DepBenchmark(BaseBenchmark, ABC):
                                for pred in dep_raw_predictions]
             dep_labels = [id2label[lbl] for lbl in dep_labels]
 
+            breakpoint()
+
             # Next merge the predictions and labels, so that we have a pair of
             # predicted/gold labels for each token
             heads = range(max(head_predictions.max(), head_labels.max()))
@@ -283,6 +285,8 @@ class DepBenchmark(BaseBenchmark, ABC):
                                 for head, _ in tuples]
             head_labels = [head for tuples in labels for head, _ in tuples]
 
+        breakpoint()
+
         # Compute metrics for the heads, which is used in UAS computation
         results_head = self._metric.compute(predictions=head_predictions,
                                             references=head_labels)
@@ -291,8 +295,6 @@ class DepBenchmark(BaseBenchmark, ABC):
         # computation
         results_merged = self._metric.compute(predictions=predictions_merged,
                                               references=labels_merged)
-
-        breakpoint()
 
         # Extract UAS and LAS and return them
         uas = results_head['overall_accuracy']
