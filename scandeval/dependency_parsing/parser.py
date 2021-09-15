@@ -24,7 +24,7 @@ class AutoModelForDependencyParsing(AutoModelForTokenClassification):
                         dep_dim: int = 100,
                         head_dropout: float = 0.33,
                         dep_dropout: float = 0.33,
-                        scale: float = 0.0,
+                        scale: float = 1.,
                         **kwargs):
 
         # Load model
@@ -122,7 +122,7 @@ class BiaffineDependencyParser(nn.Module):
                  dep_dim: int = 100,
                  head_dropout: float = 0.33,
                  dep_dropout: float = 0.33,
-                 scale: float = 0.0):
+                 scale: float = 1.):
         super().__init__()
         self.head_mlp_d = MLP(in_dim=hidden_dim,
                              out_dim=head_dim,
