@@ -139,7 +139,7 @@ class BaseBenchmark(ABC):
         if verbose:
             tf_logging.set_verbosity_warning()
 
-    def _get_model_class(self, framework: str) -> _BaseAutoModelClass:
+    def _get_model_class(self, framework: str):
         return MODEL_CLASSES[framework][self.task]
 
     @staticmethod
@@ -237,7 +237,7 @@ class BaseBenchmark(ABC):
                 import torch.nn as nn
                 from torch.nn import Parameter
             elif framework == 'tensorflow':
-                import tensorflow  # noqa
+                import tensorflow as tf
             elif framework == 'jax':
                 import flax  # noqa
             elif framework == 'spacy':
@@ -465,7 +465,23 @@ class BaseBenchmark(ABC):
                 else:
                     tokenizer.model_max_length = 512
 
-            return dict(model=model, tokenizer=tokenizer)
+            # Count the parameters of the model
+            if framework == 'pytorch':
+                num_parameters = sum(p.numel() for p in model.parameters()
+                                     if p.requires_grad)
+
+            elif framework == 'tensorflow':
+                num_parameters = np.sum([np.prod(v.shape)
+                                         for v in tf.trainable_variables])
+
+            # TODO: Number of parameters not yet calculated for other
+            #       frameworks
+            else:
+                num_parameters = None
+
+            return dict(model=model,
+                        tokenizer=tokenizer,
+                        num_parameters=num_parameters)
 
         elif framework == 'spacy':
             local_model_id = model_id.split('/')[-1]
@@ -695,6 +711,10 @@ class BaseBenchmark(ABC):
         framework = model_metadata['framework']
         task = model_metadata['task']
         model_dict = self._load_model(model_id, **model_metadata)
+
+        # Print the number of parameters
+        num_parameters = model_dict.get('num_parameters')
+        logger.info(f'Number of trainable parameters: {num_parameters:,}.')
 
         # Define variable that determines if the model should be finetuned
         finetune = (task == 'fill-mask')
