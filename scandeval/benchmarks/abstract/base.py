@@ -812,7 +812,7 @@ class BaseBenchmark(ABC):
                         trainer_args = dict(model=model,
                                             args=training_args,
                                             train_dataset=split['train'],
-                                            eval_dataset=split['test'],
+                                            eval_dataset=split['train'],
                                             tokenizer=tokenizer,
                                             data_collator=data_collator,
                                             compute_metrics=compute_metrics)
