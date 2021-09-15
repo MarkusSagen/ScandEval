@@ -21,6 +21,11 @@ from .dependency_parsing import AutoModelForDependencyParsing
 
 
 class DepTrainer(Trainer):
+    def compute_loss(self, *args, **kwargs):
+        loss = super().compute_loss(*args, **kwargs)
+        breakpoint()
+        return loss
+
     def prediction_step(self, *args, **kwargs):
         import torch
 
