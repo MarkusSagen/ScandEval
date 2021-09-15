@@ -18,7 +18,7 @@ class Biaffine(nn.Module):
     def __init__(self,
                  in_dim: int,
                  out_dim: int = 1,
-                 scale: float = 0.,
+                 scale: float = 1.,
                  bias_x: bool = True,
                  bias_y: bool = True):
         super().__init__()
@@ -51,7 +51,7 @@ class Biaffine(nn.Module):
         s = f"in_dim={self.in_dim}"
         if self.out_dim > 1:
             s += f", out_dim={self.out_dim}"
-        if self.scale != 0:
+        if self.scale != 1:
             s += f", scale={self.scale}"
         if self.bias_x:
             s += f", bias_x={self.bias_x}"
