@@ -9,6 +9,7 @@ import logging
 from abc import ABC
 from tqdm.auto import tqdm
 import numpy as np
+import itertools as it
 
 from .base import BaseBenchmark
 from ...utils import InvalidBenchmark
@@ -217,8 +218,6 @@ class DepBenchmark(BaseBenchmark, ABC):
         # Get the predictions from the model
         predictions, labels = predictions_and_labels
 
-        breakpoint()
-
         # If `id2label` is given then assume that `predictions` contain ID
         # logits for every token, where an ID can mean both a head and a dep,
         # so it needs to be split up in these two halves.
@@ -247,15 +246,32 @@ class DepBenchmark(BaseBenchmark, ABC):
 
             # Next merge the predictions and labels, so that we have a pair of
             # predicted/gold labels for each token
-            predictions_merged = [str((head, dep))
+            heads = range(max(head_predictions.max(), head_labels.max()))
+            deps = list(set(dep_labels).union(set(dep_predictions)))
+            head_deps = it.product(heads, deps)
+            str_to_int = {str((head, dep)): idx
+                          for idx, (head, dep) in enumerate(head_deps)}
+            predictions_merged = [str_to_int[str((head, dep))]
                                   for head, dep in zip(head_predictions,
                                                        dep_predictions)]
-            labels_merged = [str((head, dep))
+            labels_merged = [str_to_int[str((head, dep))]
                              for head, dep in zip(head_labels, dep_labels)]
 
         # If `id2label` is not given then assume that the predictions and
         # labels contain a pair (head, dep) for every token.
         else:
+
+            unique_preds = {tup for tuples in predictions for tup in tuples}
+            unique_labels = {tup for tuples in labels for tup in tuples}
+            all_merged = list(unique_preds.union(unique_labels))
+            str_to_int = {str(tup): idx for idx, tup in enumerate(all_merged)}
+            predictions_merged = [str_to_int[str(tup)]
+                                  for tuples in predictions
+                                  for tup in tuples]
+            labels_merged = [str_to_int[str(tup)]
+                             for tuples in labels
+                             for tup in tuples]
+
             # Convert the pair of labels to a single one by converting it into
             # strings. This is used in LAS computations.
             predictions_merged = [list(map(str, tuples))
@@ -263,10 +279,9 @@ class DepBenchmark(BaseBenchmark, ABC):
             labels_merged = [list(map(str, tuples)) for tuples in labels]
 
             # Extract the heads predictions and labels, used in UAS computation
-            head_predictions = [[head for head, _ in preds]
-                                for preds in predictions]
-            head_labels = [[head for head, _ in label_list]
-                           for label_list in labels]
+            head_predictions = [head for tuples in predictions
+                                for head, _ in tuples]
+            head_labels = [head for tuples in labels for head, _ in tuples]
 
         # Compute metrics for the heads, which is used in UAS computation
         results_head = self._metric.compute(predictions=head_predictions,
