@@ -261,8 +261,8 @@ class DepBenchmark(BaseBenchmark, ABC):
         # labels contain a pair (head, dep) for every token.
         else:
             # Ensure that the label pairs are tuples and not lists
-            predictions = list(map(tuple, predictions))
-            labels = list(map(tuple, labels))
+            predictions = [list(map(tuple, preds)) for preds in predictions]
+            labels = [list(map(tuple, lbl_list)) for lbl_list in labels]
 
             # Generate a dictionary that converts pairs of labels to a single
             # enumeration
