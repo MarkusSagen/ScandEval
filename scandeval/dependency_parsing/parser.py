@@ -23,8 +23,8 @@ class AutoModelForDependencyParsing(AutoModelForTokenClassification):
                         head_dim: int = 100,
                         dep_dim: int = 100,
                         emb_dropout: float = 0.33,
-                        head_dropout: float = 0.33,
-                        dep_dropout: float = 0.33,
+                        head_dropout: float = 0.50,
+                        dep_dropout: float = 0.50,
                         **kwargs):
 
         # Load model
