@@ -260,9 +260,9 @@ class DepBenchmark(BaseBenchmark, ABC):
         # If `id2label` is not given then assume that the predictions and
         # labels contain a pair (head, dep) for every token.
         else:
-
-            unique_preds = {tup for tuples in predictions for tup in tuples}
-            unique_labels = {tup for tuples in labels for tup in tuples}
+            unique_preds = {tuple(tup) for tuples in predictions
+                            for tup in tuples}
+            unique_labels = {tuple(tup) for tuples in labels for tup in tuples}
             all_merged = list(unique_preds.union(unique_labels))
             str_to_int = {str(tup): idx for idx, tup in enumerate(all_merged)}
             predictions_merged = [str_to_int[str(tup)]
