@@ -38,23 +38,23 @@ class NerBenchmark(TokenClassificationBenchmark):
         label_synonyms (list of lists of str): Synonyms of the dataset labels.
         evaluate_train (bool): Whether the training set should be evaluated.
         cache_dir (str): Directory where models are cached.
-        two_labels (bool): Whether two labels should be predicted.
-        split_point (int or None): Splitting point of `id2label` into labels.
         verbose (bool): Whether to print additional output.
     '''
+
+    id2label = ['B-LOC', 'I-LOC', 'B-ORG', 'I-ORG', 'B-PER',
+                'I-PER', 'B-MISC', 'I-MISC', 'O']
+
     def __init__(self,
                  name: str,
                  cache_dir: str = '.benchmark_models',
                  evaluate_train: bool = False,
                  verbose: bool = False):
-        id2label = ['B-LOC', 'I-LOC', 'B-ORG', 'I-ORG', 'B-PER',
-                    'I-PER', 'B-MISC', 'I-MISC', 'O']
         super().__init__(name=name,
                          metric_names=dict(micro_f1='Micro-average F1-score',
                                            micro_f1_no_misc='Micro-average '
                                                             'F1-score without '
                                                             'MISC tags'),
-                         id2label=id2label,
+                         id2label=self.id2label,
                          cache_dir=cache_dir,
                          evaluate_train=evaluate_train,
                          verbose=verbose)

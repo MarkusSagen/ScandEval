@@ -8,7 +8,6 @@ import logging
 import pkg_resources
 import re
 import transformers.utils.logging as tf_logging
-import torch
 from pydoc import locate
 from transformers import (AutoModelForTokenClassification,
                           AutoModelForSequenceClassification,
@@ -18,6 +17,41 @@ from transformers import (AutoModelForTokenClassification,
                           FlaxAutoModelForSequenceClassification,
                           Trainer)
 
+from .dependency_parsing import AutoModelForDependencyParsing
+
+
+class DepTrainer(Trainer):
+    def prediction_step(self, *args, **kwargs):
+        import torch
+
+        loss, logits, labels = super().prediction_step(*args, **kwargs)
+
+        # Extract the head labels and dep labels
+        head_labels = labels[:, :, 0]
+        dep_labels = labels[:, :, 1]
+
+        # Extract the head logits and dep logits
+        head_logits, dep_logits = logits
+
+        # Get the active labels and logits
+        mask = head_labels.ge(0)
+        active_head_logits = head_logits[mask]
+        active_dep_logits = dep_logits[mask]
+        active_head_labels = head_labels[mask]
+        active_dep_labels = dep_labels[mask]
+
+        # Get the dependency label logits for the gold arcs and store that in
+        # the `logits` variable, to enable proper processing during evaluation
+        label_range = torch.arange(len(active_head_labels))
+        active_dep_logits = active_dep_logits[label_range, active_head_labels]
+
+        # Collect the head and dep logits into the `logits` variable
+        logits = (active_head_logits, active_dep_logits)
+
+        # Collect the head and dep labels into the `labels` variable
+        labels = torch.stack((active_head_labels, active_dep_labels), dim=-1)
+
+        return loss, logits, labels
 
 def get_all_datasets() -> list:
     '''Load a list of all datasets.
@@ -120,40 +154,15 @@ def get_all_datasets() -> list:
 
 
 PT_CLS = {'token-classification': AutoModelForTokenClassification,
-          'text-classification': AutoModelForSequenceClassification}
+          'text-classification': AutoModelForSequenceClassification,
+          'dependency-parsing': AutoModelForDependencyParsing}
 TF_CLS = {'token-classification': TFAutoModelForTokenClassification,
-          'text-classification': TFAutoModelForSequenceClassification}
+          'text-classification': TFAutoModelForSequenceClassification,
+          'dependency-parsing': AutoModelForDependencyParsing}
 JAX_CLS = {'token-classification': FlaxAutoModelForTokenClassification,
-           'text-classification': FlaxAutoModelForSequenceClassification}
+           'text-classification': FlaxAutoModelForSequenceClassification,
+           'dependency-parsing': AutoModelForDependencyParsing}
 MODEL_CLASSES = dict(pytorch=PT_CLS, tensorflow=TF_CLS, jax=JAX_CLS)
-
-
-class TwolabelTrainer(Trainer):
-    '''Trainer class which deals with two labels.'''
-    def __init__(self, split_point: int, **kwargs):
-        self.split_point = split_point
-        super().__init__(**kwargs)
-
-    def compute_loss(self, model, inputs, return_outputs=False):
-        labels = inputs.pop('labels')
-        labels1 = labels[:, :, 0]
-        labels2 = labels[:, :, 1]
-        labels2 = torch.where(labels2 > 0, labels2 - self.split_point, labels2)
-
-        outputs = model(**inputs)
-        logits = outputs.logits
-
-        logits1 = logits[:, :, :self.split_point]
-        logits2 = logits[:, :, self.split_point:]
-        num_classes2 = logits2.size(2)
-
-        loss_fct = torch.nn.CrossEntropyLoss()
-        loss1 = loss_fct(logits1.view(-1, self.split_point),
-                         labels1.view(-1))
-        loss2 = loss_fct(logits2.view(-1, num_classes2),
-                         labels2.view(-1))
-        loss = loss1 + loss2
-        return (loss, outputs) if return_outputs else loss
 
 
 class InvalidBenchmark(Exception):

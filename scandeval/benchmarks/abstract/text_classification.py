@@ -39,15 +39,6 @@ class TextClassificationBenchmark(BaseBenchmark, ABC):
         cache_dir (str, optional):
             Where the downloaded models will be stored. Defaults to
             '.benchmark_models'.
-        two_labels (bool, optional):
-            Whether two labels should be predicted in the dataset.  If this is
-            True then `split_point` has to be set. Defaults to False.
-        split_point (int or None, optional):
-            When there are two labels to be predicted, this is the index such
-            that `id2label[:split_point]` contains the labels for the first
-            label, and `id2label[split_point]` contains the labels for the
-            second label. Only relevant if `two_labels` is True. Defaults to
-            None.
         verbose (bool, optional):
             Whether to print additional output during evaluation. Defaults to
             False.
@@ -62,8 +53,6 @@ class TextClassificationBenchmark(BaseBenchmark, ABC):
         label_synonyms (list of lists of str): Synonyms of the dataset labels.
         evaluate_train (bool): Whether the training set should be evaluated.
         cache_dir (str): Directory where models are cached.
-        two_labels (bool): Whether two labels should be predicted.
-        split_point (int or None): Splitting point of `id2label` into labels.
         verbose (bool): Whether to print additional output.
     '''
     def __init__(self,
@@ -72,8 +61,6 @@ class TextClassificationBenchmark(BaseBenchmark, ABC):
                  label_synonyms: Optional[List[List[str]]] = None,
                  evaluate_train: bool = False,
                  cache_dir: str = '.benchmark_models',
-                 two_labels: bool = False,
-                 split_point: Optional[int] = None,
                  verbose: bool = False):
         self._metric = load_metric('f1')
         super().__init__(task='text-classification',
@@ -83,8 +70,6 @@ class TextClassificationBenchmark(BaseBenchmark, ABC):
                          label_synonyms=label_synonyms,
                          cache_dir=cache_dir,
                          evaluate_train=evaluate_train,
-                         two_labels=two_labels,
-                         split_point=split_point,
                          verbose=verbose)
 
     def _load_data(self) -> Tuple[Dataset, Dataset]:

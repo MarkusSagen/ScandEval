@@ -40,15 +40,6 @@ class TokenClassificationBenchmark(BaseBenchmark, ABC):
         cache_dir (str, optional):
             Where the downloaded models will be stored. Defaults to
             '.benchmark_models'.
-        two_labels (bool, optional):
-            Whether two labels should be predicted in the dataset.  If this is
-            True then `split_point` has to be set. Defaults to False.
-        split_point (int or None, optional):
-            When there are two labels to be predicted, this is the index such
-            that `id2label[:split_point]` contains the labels for the first
-            label, and `id2label[split_point]` contains the labels for the
-            second label. Only relevant if `two_labels` is True. Defaults to
-            None.
         verbose (bool, optional):
             Whether to print additional output during evaluation. Defaults to
             False.
@@ -63,8 +54,6 @@ class TokenClassificationBenchmark(BaseBenchmark, ABC):
         label_synonyms (list of lists of str): Synonyms of the dataset labels.
         evaluate_train (bool): Whether the training set should be evaluated.
         cache_dir (str): Directory where models are cached.
-        two_labels (bool): Whether two labels should be predicted.
-        split_point (int or None): Splitting point of `id2label` into labels.
         verbose (bool): Whether to print additional output.
     '''
     def __init__(self,
@@ -74,8 +63,6 @@ class TokenClassificationBenchmark(BaseBenchmark, ABC):
                  label_synonyms: Optional[List[List[str]]] = None,
                  evaluate_train: bool = False,
                  cache_dir: str = '.benchmark_models',
-                 two_labels: bool = False,
-                 split_point: Optional[int] = None,
                  verbose: bool = False):
         self._metric = load_metric('seqeval')
         super().__init__(task='token-classification',
@@ -85,8 +72,6 @@ class TokenClassificationBenchmark(BaseBenchmark, ABC):
                          label_synonyms=label_synonyms,
                          cache_dir=cache_dir,
                          evaluate_train=evaluate_train,
-                         two_labels=two_labels,
-                         split_point=split_point,
                          verbose=verbose)
 
     def _tokenize_and_align_labels(self,
@@ -124,44 +109,22 @@ class TokenClassificationBenchmark(BaseBenchmark, ABC):
                 # to -100 so they are automatically ignored in the loss
                 # function
                 if word_idx is None:
-                    if self.two_labels:
-                        label_ids.append([-100, -100])
-                    else:
-                        label_ids.append(-100)
+                    label_ids.append(-100)
 
                 # We set the label for the first token of each word
                 elif word_idx != previous_word_idx:
                     label = labels[word_idx]
-                    if self.two_labels:
-                        try:
-                            label_id1 = label2id[label[0]]
-                        except KeyError:
-                            msg = (f'The label {label[0]} was not found '
-                                   f'in the model\'s config.')
-                            raise InvalidBenchmark(msg)
-                        try:
-                            label_id2 = label2id[label[1]]
-                        except KeyError:
-                            msg = (f'The label {label[1]} was not found '
-                                   f'in the model\'s config.')
-                            raise InvalidBenchmark(msg)
-                        label_id = [label_id1, label_id2]
-
-                    else:
-                        try:
-                            label_id = label2id[label]
-                        except KeyError:
-                            msg = (f'The label {label} was not found '
-                                   f'in the model\'s config.')
-                            raise InvalidBenchmark(msg)
+                    try:
+                        label_id = label2id[label]
+                    except KeyError:
+                        msg = (f'The label {label} was not found '
+                               f'in the model\'s config.')
+                        raise InvalidBenchmark(msg)
                     label_ids.append(label_id)
 
                 # For the other tokens in a word, we set the label to -100
                 else:
-                    if self.two_labels:
-                        label_ids.append([-100, -100])
-                    else:
-                        label_ids.append(-100)
+                    label_ids.append(-100)
 
                 previous_word_idx = word_idx
 
@@ -208,11 +171,7 @@ class TokenClassificationBenchmark(BaseBenchmark, ABC):
         Returns:
             HuggingFace data collator: The data collator.
         '''
-        if self.two_labels:
-            params = dict(label_pad_token_id=[-100, -100])
-        else:
-            params = dict(label_pad_token_id=-100)
-        return DataCollatorForTokenClassification(tokenizer, **params)
+        return DataCollatorForTokenClassification(tokenizer)
 
     def _get_spacy_predictions_and_labels(self,
                                           model,

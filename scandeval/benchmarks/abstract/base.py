@@ -2,17 +2,16 @@
 
 from abc import ABC, abstractmethod
 from datasets import Dataset
-from transformers.models.auto.auto_factory import _BaseAutoModelClass
 import transformers.utils.logging as tf_logging
 from transformers import (PreTrainedTokenizerBase,
                           AutoTokenizer,
                           AutoConfig,
                           TrainingArguments,
-                          Trainer,
                           PrinterCallback,
                           EarlyStoppingCallback,
                           RobertaForSequenceClassification,
-                          RobertaForTokenClassification)
+                          RobertaForTokenClassification,
+                          Trainer)
 from typing import Dict, Optional, Tuple, List, Any
 import numpy as np
 import requests
@@ -28,7 +27,7 @@ import re
 import random
 
 from ...utils import (MODEL_CLASSES, is_module_installed, InvalidBenchmark,
-                      TwolabelTrainer, get_all_datasets)
+                      get_all_datasets, DepTrainer)
 
 
 logger = logging.getLogger(__name__)
@@ -60,15 +59,6 @@ class BaseBenchmark(ABC):
         cache_dir (str, optional):
             Where the downloaded models will be stored. Defaults to
             '.benchmark_models'.
-        two_labels (bool, optional):
-            Whether two labels should be predicted in the dataset.  If this is
-            True then `split_point` has to be set. Defaults to False.
-        split_point (int or None, optional):
-            When there are two labels to be predicted, this is the index such
-            that `id2label[:split_point]` contains the labels for the first
-            label, and `id2label[split_point]` contains the labels for the
-            second label. Only relevant if `two_labels` is True. Defaults to
-            None.
         verbose (bool, optional):
             Whether to print additional output during evaluation. Defaults to
             False.
@@ -83,8 +73,6 @@ class BaseBenchmark(ABC):
         label_synonyms (list of lists of str): Synonyms of the dataset labels.
         evaluate_train (bool): Whether the training set should be evaluated.
         cache_dir (str): Directory where models are cached.
-        two_labels (bool): Whether two labels should be predicted.
-        split_point (int or None): Splitting point of `id2label` into labels.
         verbose (bool): Whether to print additional output.
     '''
     def __init__(self,
@@ -95,8 +83,6 @@ class BaseBenchmark(ABC):
                  label_synonyms: Optional[List[List[str]]] = None,
                  evaluate_train: bool = False,
                  cache_dir: str = '.benchmark_models',
-                 two_labels: bool = False,
-                 split_point: Optional[int] = None,
                  verbose: bool = False):
 
         self.short_name = name
@@ -109,8 +95,6 @@ class BaseBenchmark(ABC):
         self.label_synonyms = label_synonyms
         self.evaluate_train = evaluate_train
         self.cache_dir = cache_dir
-        self.two_labels = two_labels
-        self.split_point = split_point
         self.verbose = verbose
 
         if id2label is not None:
@@ -239,7 +223,7 @@ class BaseBenchmark(ABC):
             elif framework == 'tensorflow':
                 import tensorflow as tf
             elif framework == 'jax':
-                import flax  # noqa
+                import flax
             elif framework == 'spacy':
                 import spacy
 
@@ -833,11 +817,7 @@ class BaseBenchmark(ABC):
                                             data_collator=data_collator,
                                             compute_metrics=compute_metrics,
                                             callbacks=[early_stopping])
-                        if self.two_labels:
-                            trainer_args['split_point'] = self.split_point
-                            trainer = TwolabelTrainer(**trainer_args)
-                        else:
-                            trainer = Trainer(**trainer_args)
+                        trainer = DepTrainer(**trainer_args)
 
                         # Remove the callback which prints the metrics after
                         # each evaluation
@@ -890,6 +870,7 @@ class BaseBenchmark(ABC):
                             raise InvalidBenchmark('CUDA out of memory, even '
                                                    'with a batch size of 1!')
                         training_args.per_device_train_batch_size = bs // 2
+                        training_args.per_device_eval_batch_size = bs // 2
                         training_args.gradient_accumulation_steps = ga * 2
                         trainer.args = training_args
 
