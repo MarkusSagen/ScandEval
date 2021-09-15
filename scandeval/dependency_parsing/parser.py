@@ -105,8 +105,6 @@ class AutoModelForDependencyParsing(AutoModelForTokenClassification):
             dep_loss = self.criterion(active_dep_logits, active_dep_labels)
             loss = head_loss + dep_loss
 
-            print(loss)
-
         return DependencyParsingOutput(
             loss=loss,
             head_logits=head_logits,
