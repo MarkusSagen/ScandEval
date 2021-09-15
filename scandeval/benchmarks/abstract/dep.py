@@ -283,8 +283,6 @@ class DepBenchmark(BaseBenchmark, ABC):
                                 for head, _ in tuples]
             head_labels = [head for tuples in labels for head, _ in tuples]
 
-        breakpoint()
-
         # Compute metrics for the heads, which is used in UAS computation
         results_head = self._metric.compute(predictions=head_predictions,
                                             references=head_labels)
@@ -295,8 +293,8 @@ class DepBenchmark(BaseBenchmark, ABC):
                                               references=labels_merged)
 
         # Extract UAS and LAS and return them
-        uas = results_head['overall_accuracy']
-        las = results_merged['overall_accuracy']
+        uas = results_head['accuracy']
+        las = results_merged['accuracy']
         return dict(uas=uas, las=las)
 
     def _get_spacy_predictions_and_labels(self,
