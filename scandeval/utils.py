@@ -25,7 +25,7 @@ class DepTrainer(Trainer):
         loss = super().compute_loss(*args, **kwargs)
         return loss
 
-    def _maybe_log_save_evaluate(self, tr_loss, model, trial, epoch, ignore_keys_for_eval):
+    def _maybe_log_save_evaluate(self, tr_loss, model, trial, epoch):
         if self.control.should_log:
             logs: Dict[str, float] = {}
             tr_loss_scalar = tr_loss.item()
@@ -43,10 +43,9 @@ class DepTrainer(Trainer):
 
         metrics = None
         if self.control.should_evaluate:
-            metrics = self.evaluate(ignore_keys=ignore_keys_for_eval)
+            metrics = self.evaluate()
             self._report_to_hp_search(trial, epoch, metrics)
-            metrics = self.evaluate(ignore_keys=ignore_keys_for_eval,
-                                    eval_dataset=self.train_dataset)
+            metrics = self.evaluate(eval_dataset=self.train_dataset)
             self._report_to_hp_search(trial, epoch, metrics)
 
         if self.control.should_save:
