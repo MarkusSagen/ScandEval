@@ -822,7 +822,7 @@ class BaseBenchmark(ABC):
                         # Set the number of GPUs to use during training to be
                         # at most one, as otherwise issues appear with tensors
                         # being on different devices
-                        trainer.n_gpus = min(trainer.n_gpus, 1)
+                        trainer.args.n_gpu = min(trainer.args.n_gpu, 1)
 
                         # Remove the callback which prints the metrics after
                         # each evaluation
