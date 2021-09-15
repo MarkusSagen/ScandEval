@@ -784,6 +784,11 @@ class BaseBenchmark(ABC):
                 load_best_model_at_end=True
             )
 
+            # Set the number of GPUs to use during training to be
+            # at most one, as otherwise issues appear with tensors
+            # being on different devices
+            training_args.n_gpu = min(training_args.n_gpu, 1)
+
             # Disable `transformers` verbosity again
             if not self.verbose:
                 tf_logging.set_verbosity_error()
@@ -818,11 +823,6 @@ class BaseBenchmark(ABC):
                                             compute_metrics=compute_metrics)
                                             #callbacks=[early_stopping])
                         trainer = DepTrainer(**trainer_args)
-
-                        # Set the number of GPUs to use during training to be
-                        # at most one, as otherwise issues appear with tensors
-                        # being on different devices
-                        trainer.args.n_gpu = min(trainer.args.n_gpu, 1)
 
                         # Remove the callback which prints the metrics after
                         # each evaluation
