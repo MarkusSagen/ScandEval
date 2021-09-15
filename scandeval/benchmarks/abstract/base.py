@@ -699,7 +699,8 @@ class BaseBenchmark(ABC):
 
         # Print the number of parameters
         num_parameters = model_dict.get('num_parameters')
-        logger.info(f'Number of trainable parameters: {num_parameters:,}.')
+        if num_parameters:
+            logger.info(f'Number of trainable parameters: {num_parameters:,}.')
 
         # Define variable that determines if the model should be finetuned
         finetune = (task == 'fill-mask')
