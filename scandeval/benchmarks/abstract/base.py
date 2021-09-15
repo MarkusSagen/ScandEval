@@ -819,6 +819,11 @@ class BaseBenchmark(ABC):
                                             #callbacks=[early_stopping])
                         trainer = DepTrainer(**trainer_args)
 
+                        # Set the number of GPUs to use during training to be
+                        # at most one, as otherwise issues appear with tensors
+                        # being on different devices
+                        trainer.n_gpus = min(trainer.n_gpus, 1)
+
                         # Remove the callback which prints the metrics after
                         # each evaluation
                         if not self.verbose:
