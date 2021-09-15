@@ -122,21 +122,21 @@ class BiaffineDependencyParser(nn.Module):
                  dep_dropout: float):
         super().__init__()
         self.head_mlp_d = MLP(in_dim=hidden_dim,
-                             out_dim=hidden_dim,
+                             out_dim=head_dim,
                              dropout=head_dropout)
         self.head_mlp_h = MLP(in_dim=hidden_dim,
-                             out_dim=hidden_dim,
+                             out_dim=head_dim,
                              dropout=head_dropout)
         self.dep_mlp_d = MLP(in_dim=hidden_dim,
-                             out_dim=hidden_dim,
+                             out_dim=dep_dim,
                              dropout=dep_dropout)
         self.dep_mlp_h = MLP(in_dim=hidden_dim,
-                             out_dim=hidden_dim,
+                             out_dim=dep_dim,
                              dropout=dep_dropout)
-        self.head_attn = Biaffine(in_dim=hidden_dim,
+        self.head_attn = Biaffine(in_dim=head_dim,
                                  bias_x=True,
                                  bias_y=False)
-        self.dep_attn = Biaffine(in_dim=hidden_dim,
+        self.dep_attn = Biaffine(in_dim=dep_dim,
                                  out_dim=num_deps,
                                  bias_x=True,
                                  bias_y=True)
