@@ -10,7 +10,7 @@ import torch.nn as nn
 import torch
 from types import MethodType
 
-from .modules import Biaffine, MLP
+from .modules import Biaffine, MLP, SharedDropout
 from .outputs import DependencyParsingOutput
 
 
@@ -22,6 +22,7 @@ class AutoModelForDependencyParsing(AutoModelForTokenClassification):
                         num_deps: int = 37,
                         head_dim: int = 500,
                         dep_dim: int = 100,
+                        emb_dropout: float = 0.33,
                         head_dropout: float = 0.33,
                         dep_dropout: float = 0.33,
                         **kwargs):
@@ -29,6 +30,9 @@ class AutoModelForDependencyParsing(AutoModelForTokenClassification):
         # Load model
         model = AutoModelForTokenClassification.from_pretrained(*args,
                                                                 **kwargs)
+
+        # Replace the dropout layer with a new one
+        model.dropout = SharedDropout(emb_dropout)
 
         # Replace the classifer head with the dependency parser
         parser = BiaffineDependencyParser(
