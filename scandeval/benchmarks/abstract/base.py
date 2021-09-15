@@ -25,6 +25,7 @@ import gc
 import logging
 import re
 import random
+import os
 
 from ...utils import (MODEL_CLASSES, is_module_installed, InvalidBenchmark,
                       get_all_datasets, DepTrainer)
@@ -691,6 +692,7 @@ class BaseBenchmark(ABC):
         Raises:
             RuntimeError: If the extracted framework is not recognized.
         '''
+        # Load model
         model_metadata = self._fetch_model_metadata(model_id)
         framework = model_metadata['framework']
         task = model_metadata['task']
@@ -725,9 +727,29 @@ class BaseBenchmark(ABC):
                 torch.cuda.manual_seed_all(4242)
                 torch.backends.cudnn.benchmark = False
 
+                # Set the number of GPUs to use during training to be
+                # at most one, as otherwise issues appear with tensors
+                # being on different devices
+                if torch.cuda.is_available():
+                    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+
             elif framework == 'tensorflow':
                 import tensorflow as tf
                 tf.random.set_seed(4242)
+
+                # Set the number of GPUs to use during training to be
+                # at most one, as otherwise issues appear with tensors
+                # being on different devices
+                num_gpus = len(tf.config
+                                 .experimental
+                                 .list_physical_devices('GPU'))
+                if num_gpus > 1:
+                    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+
+            elif framework == 'jax':
+                import jax
+                if jax.default_backend() == 'gpu':
+                    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
             # Extract the model and tokenizer
             model = model_dict['model']
@@ -783,11 +805,6 @@ class BaseBenchmark(ABC):
                 gradient_accumulation_steps=1,
                 load_best_model_at_end=True
             )
-
-            # Set the number of GPUs to use during training to be
-            # at most one, as otherwise issues appear with tensors
-            # being on different devices
-            training_args.n_gpu = min(training_args.n_gpu, 1)
 
             # Disable `transformers` verbosity again
             if not self.verbose:
