@@ -815,8 +815,8 @@ class BaseBenchmark(ABC):
                                             eval_dataset=split['test'],
                                             tokenizer=tokenizer,
                                             data_collator=data_collator,
-                                            compute_metrics=compute_metrics,
-                                            callbacks=[early_stopping])
+                                            compute_metrics=compute_metrics)
+                                            #callbacks=[early_stopping])
                         trainer = DepTrainer(**trainer_args)
 
                         # Remove the callback which prints the metrics after
