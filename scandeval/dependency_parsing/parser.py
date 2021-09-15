@@ -139,7 +139,7 @@ class BiaffineDependencyParser(nn.Module):
                              dropout=dep_dropout)
         self.head_attn = Biaffine(in_dim=head_dim,
                                  bias_x=True,
-                                 bias_y=True)
+                                 bias_y=False)
         self.dep_attn = Biaffine(in_dim=dep_dim,
                                  out_dim=num_deps,
                                  bias_x=True,
