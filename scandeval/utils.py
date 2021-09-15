@@ -45,7 +45,8 @@ class DepTrainer(Trainer):
         if self.control.should_evaluate:
             metrics = self.evaluate()
             self._report_to_hp_search(trial, epoch, metrics)
-            metrics = self.evaluate(eval_dataset=self.train_dataset)
+            metrics = self.evaluate(eval_dataset=self.train_dataset,
+                                    metric_key_prefix='train')
             self._report_to_hp_search(trial, epoch, metrics)
 
         if self.control.should_save:
