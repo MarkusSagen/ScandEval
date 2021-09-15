@@ -13,6 +13,11 @@ and this project adheres to
 - The number of parameters will now be counted and logged when benchmarking
   models. Currently this is only implemented for PyTorch and TensorFlow models.
 
+### Changed
+- Increased the `patience` parameter for early stopping, from
+  `2 + 1000 // len(train)` to `2 + 10000 // len(train)`. This is due to the
+  fact that models tended to stop training too early.
+
 
 ## [v1.1.0] - 2021-09-13
 ### Added
