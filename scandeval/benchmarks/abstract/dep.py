@@ -260,23 +260,25 @@ class DepBenchmark(BaseBenchmark, ABC):
         # If `id2label` is not given then assume that the predictions and
         # labels contain a pair (head, dep) for every token.
         else:
+            # Ensure that the label pairs are tuples and not lists
+            predictions = list(map(tuple, predictions))
+            labels = list(map(tuple, labels))
+
+            # Generate a dictionary that converts pairs of labels to a single
+            # enumeration
             unique_preds = {tuple(tup) for tuples in predictions
                             for tup in tuples}
             unique_labels = {tuple(tup) for tuples in labels for tup in tuples}
             all_merged = list(unique_preds.union(unique_labels))
             str_to_int = {str(tup): idx for idx, tup in enumerate(all_merged)}
+
+            # Convert the double labels to single numeric labels
             predictions_merged = [str_to_int[str(tup)]
                                   for tuples in predictions
                                   for tup in tuples]
             labels_merged = [str_to_int[str(tup)]
                              for tuples in labels
                              for tup in tuples]
-
-            # Convert the pair of labels to a single one by converting it into
-            # strings. This is used in LAS computations.
-            predictions_merged = [list(map(str, tuples))
-                                  for tuples in predictions]
-            labels_merged = [list(map(str, tuples)) for tuples in labels]
 
             # Extract the heads predictions and labels, used in UAS computation
             head_predictions = [head for tuples in predictions
