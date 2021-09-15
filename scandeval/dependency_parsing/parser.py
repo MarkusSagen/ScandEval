@@ -124,38 +124,38 @@ class BiaffineDependencyParser(nn.Module):
                  dep_dropout: float = 0.33,
                  scale: float = 1.):
         super().__init__()
-        self.head_mlp_d = MLP(in_dim=hidden_dim,
-                             out_dim=head_dim,
-                             dropout=head_dropout)
-        self.head_mlp_h = MLP(in_dim=hidden_dim,
-                             out_dim=head_dim,
-                             dropout=head_dropout)
-        self.dep_mlp_d = MLP(in_dim=hidden_dim,
-                             out_dim=dep_dim,
-                             dropout=dep_dropout)
-        self.dep_mlp_h = MLP(in_dim=hidden_dim,
-                             out_dim=dep_dim,
-                             dropout=dep_dropout)
-        self.head_attn = Biaffine(in_dim=head_dim,
+        # self.head_mlp_d = MLP(in_dim=hidden_dim,
+        #                      out_dim=head_dim,
+        #                      dropout=head_dropout)
+        # self.head_mlp_h = MLP(in_dim=hidden_dim,
+        #                      out_dim=head_dim,
+        #                      dropout=head_dropout)
+        # self.dep_mlp_d = MLP(in_dim=hidden_dim,
+        #                      out_dim=dep_dim,
+        #                      dropout=dep_dropout)
+        # self.dep_mlp_h = MLP(in_dim=hidden_dim,
+        #                      out_dim=dep_dim,
+        #                      dropout=dep_dropout)
+        self.head_attn = Biaffine(in_dim=hidden_dim,
                                  scale=scale,
                                  bias_x=True,
                                  bias_y=False)
-        self.dep_attn = Biaffine(in_dim=dep_dim,
+        self.dep_attn = Biaffine(in_dim=hidden_dim,
                                  out_dim=num_deps,
                                  scale=scale,
                                  bias_x=True,
                                  bias_y=True)
 
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        head_d = self.head_mlp_d(x)
-        head_h = self.head_mlp_h(x)
-        dep_d = self.dep_mlp_d(x)
-        dep_h = self.dep_mlp_h(x)
+        # head_d = self.head_mlp_d(x)
+        # head_h = self.head_mlp_h(x)
+        # dep_d = self.dep_mlp_d(x)
+        # dep_h = self.dep_mlp_h(x)
 
         # [batch_size, seq_len, seq_len]
-        s_head = self.head_attn(head_d, head_h)
+        s_head = self.head_attn(x, x)
 
         # [batch_size, seq_len, seq_len, n_deps]
-        s_dep = self.dep_attn(dep_d, dep_h)
+        s_dep = self.dep_attn(x, x)
 
         return s_head, s_dep
