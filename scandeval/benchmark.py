@@ -7,6 +7,7 @@ from collections import defaultdict
 import logging
 import json
 from pathlib import Path
+import os
 
 from .utils import InvalidBenchmark, get_all_datasets
 
@@ -67,6 +68,10 @@ class Benchmark:
         else:
             logging_level = logging.INFO
         logger.setLevel(logging_level)
+
+        # Set number of visible GPUS to be at most one, as otherwise errors
+        # appear with tensors being on separate devices
+        os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
     def _update_benchmarks(self, **params):
         '''Updates the internal list of all benchmarks.

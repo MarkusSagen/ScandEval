@@ -25,7 +25,6 @@ import gc
 import logging
 import re
 import random
-import os
 
 from ...utils import (MODEL_CLASSES, is_module_installed, InvalidBenchmark,
                       get_all_datasets, DepTrainer)
@@ -727,29 +726,9 @@ class BaseBenchmark(ABC):
                 torch.cuda.manual_seed_all(4242)
                 torch.backends.cudnn.benchmark = False
 
-                # Set the number of GPUs to use during training to be
-                # at most one, as otherwise issues appear with tensors
-                # being on different devices
-                if torch.cuda.is_available():
-                    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-
             elif framework == 'tensorflow':
                 import tensorflow as tf
                 tf.random.set_seed(4242)
-
-                # Set the number of GPUs to use during training to be
-                # at most one, as otherwise issues appear with tensors
-                # being on different devices
-                num_gpus = len(tf.config
-                                 .experimental
-                                 .list_physical_devices('GPU'))
-                if num_gpus > 1:
-                    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-
-            elif framework == 'jax':
-                import jax
-                if jax.default_backend() == 'gpu':
-                    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
             # Extract the model and tokenizer
             model = model_dict['model']
