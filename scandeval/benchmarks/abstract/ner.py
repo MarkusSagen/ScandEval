@@ -43,17 +43,33 @@ class NerBenchmark(TokenClassificationBenchmark):
 
     id2label = ['B-LOC', 'I-LOC', 'B-ORG', 'I-ORG', 'B-PER',
                 'I-PER', 'B-MISC', 'I-MISC', 'O']
-
     def __init__(self,
                  name: str,
                  cache_dir: str = '.benchmark_models',
                  evaluate_train: bool = False,
                  verbose: bool = False):
+        label_synonyms = [
+            ['LABEL_0', self.id2label[0], 'B-Location', 'LOC', 'LOC/PRS',
+                'LOC/ORG'],
+            ['LABEL_1', self.id2label[1], 'I-Location'],
+            ['LABEL_2', self.id2label[2], 'B-Organization', 'ORG', 'ORG/PRS',
+                'OBJ/ORG'],
+            ['LABEL_3', self.id2label[3], 'I-Organization'],
+            ['LABEL_4', self.id2label[4], 'B-Person', 'PER'],
+            ['LABEL_5', self.id2label[5], 'I-Person'],
+            ['LABEL_6', self.id2label[6], 'B-Miscellaneous', 'B-Date',
+                'B-Money', 'B-Percent', 'B-Time', 'PRS/WRK', 'WRK', 'MSR',
+                'EVN'],
+            ['LABEL_7', self.id2label[7], 'I-Miscellaneous', 'I-Date',
+                'I-Money', 'I-Percent', 'I-Time'],
+            ['LABEL_8', self.id2label[8]],
+        ]
         super().__init__(name=name,
                          metric_names=dict(micro_f1='Micro-average F1-score',
                                            micro_f1_no_misc='Micro-average '
                                                             'F1-score without '
                                                             'MISC tags'),
+                         label_synonyms=label_synonyms,
                          id2label=self.id2label,
                          cache_dir=cache_dir,
                          evaluate_train=evaluate_train,

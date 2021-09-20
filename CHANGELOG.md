@@ -12,6 +12,8 @@ and this project adheres to
 ### Added
 - The number of parameters will now be counted and logged when benchmarking
   models. Currently this is only implemented for PyTorch and TensorFlow models.
+- Added label synonyms for NER tagging, enabling evaluation of more finetuned
+  NER models.
 
 ### Changed
 - Increased the `patience` parameter for early stopping, from
