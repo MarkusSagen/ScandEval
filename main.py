@@ -1,4 +1,79 @@
-'''Testing script'''
+'''Dataset preprocessing scripts'''
+
+
+def process_mim_gold_ner():
+    from pathlib import Path
+    import pandas as pd
+    from tqdm.auto import tqdm
+    import json
+    import re
+    from collections import defaultdict
+
+    conversion_dict = {
+        'O': 'O',
+        'B-Person': 'B-PER',
+        'I-Person': 'I-PER',
+        'B-Location': 'B-LOC',
+        'I-Location': 'I-LOC',
+        'B-Organization': 'B-ORG',
+        'I-Organization': 'I-ORG',
+        'B-Miscellaneous': 'B-MISC',
+        'I-Miscellaneous': 'I-MISC',
+        'B-Date': 'B-MISC',
+        'I-Date': 'I-MISC',
+        'B-Time': 'B-MISC',
+        'I-Time': 'I-MISC',
+        'B-Money': 'B-MISC',
+        'I-Money': 'I-MISC',
+        'B-Percent': 'B-MISC',
+        'I-Percent': 'I-MISC'
+    }
+
+    def get_df(path: Path):
+        lines = path.read_text().split('\n')
+        data_dict = defaultdict(list)
+        tokens = list()
+        tags = list()
+        for line in tqdm(lines):
+            if line != '':
+                token, tag = line.split('\t')
+                tag = conversion_dict[tag]
+                tokens.append(token)
+                tags.append(tag)
+            else:
+                doc = ' '.join(tokens)
+                doc = re.sub(' ([.,])', '\1', doc)
+                data_dict['doc'].append(doc)
+                data_dict['tokens'].append(tokens)
+                data_dict['ner_tags'].append(tags)
+                tokens = list()
+                tags = list()
+
+        return pd.DataFrame(data_dict)
+
+    def export_as_jsonl(df: pd.DataFrame, output_path: Path):
+        for idx, row in tqdm(list(df.iterrows())):
+            data_dict = dict(doc=row.doc,
+                             tokens=row.tokens,
+                             ner_tags=row.ner_tags)
+            json_line = json.dumps(data_dict)
+            with output_path.open('a') as f:
+                f.write(json_line)
+                if idx < len(df) - 1:
+                    f.write('\n')
+
+    data_dir = Path('datasets') / 'mim_gold_ner'
+    train_input_path = data_dir / 'raw_train'
+    val_input_path = data_dir / 'raw_val'
+    test_input_path = data_dir / 'raw_test'
+    train_output_path = data_dir / 'train.jsonl'
+    test_output_path = data_dir / 'test.jsonl'
+
+    train_df = pd.concat((get_df(train_input_path), get_df(val_input_path)))
+    test_df = get_df(test_input_path)
+
+    export_as_jsonl(train_df, train_output_path)
+    export_as_jsonl(test_df, test_output_path)
 
 
 def process_fdt():
@@ -197,71 +272,6 @@ def process_wikiann_fo():
     export_as_jsonl(train, train_output_path)
     export_as_jsonl(test, test_output_path)
 
-
-def process_wikiann_is():
-    from pathlib import Path
-    import json
-    from tqdm.auto import tqdm
-    import pandas as pd
-    from sklearn.model_selection import train_test_split
-    import re
-
-    dataset_dir = Path('datasets/wikiann_is')
-    if not dataset_dir.exists():
-        dataset_dir.mkdir()
-
-    input_path = Path('datasets/wikiann-is.bio')
-    train_output_path = Path('datasets/wikiann_is/train.jsonl')
-    test_output_path = Path('datasets/wikiann_is/test.jsonl')
-
-    corpus = input_path.read_text().split('\n')
-
-    tokens = list()
-    ner_tags = list()
-    records = list()
-    for line in corpus:
-        if line != '':
-            data = line.split(' ')
-            tokens.append(data[0])
-            ner_tags.append(data[-1])
-
-        else:
-            assert len(tokens) == len(ner_tags)
-            doc = ' '.join(tokens)
-            doc = re.sub(' ([.,])', '\1', doc)
-            records.append(dict(doc=doc, tokens=tokens, ner_tags=ner_tags))
-            tokens = list()
-            ner_tags = list()
-
-    # Show the NER tags in the dataset, as a sanity check
-    print(sorted(set([tag for record in records
-                      for tag in record['ner_tags']])))
-
-    # Count the number of each NER tag, as a sanity check
-    tags = ['PER', 'LOC', 'ORG', 'MISC']
-    for tag in tags:
-        num = len([t for record in records for t in record['ner_tags']
-                   if t[2:] == tag])
-        print(tag, num)
-
-    df = pd.DataFrame.from_records(records)
-    train, test = train_test_split(df, test_size=0.3)
-    train = train.reset_index(drop=True)
-    test = test.reset_index(drop=True)
-
-    def export_as_jsonl(df: pd.DataFrame, output_path: Path):
-        for idx, row in tqdm(df.iterrows()):
-            data_dict = dict(doc=row.doc,
-                             tokens=row.tokens,
-                             ner_tags=row.ner_tags)
-            json_line = json.dumps(data_dict)
-            with output_path.open('a') as f:
-                f.write(json_line)
-                if idx < len(df) - 1:
-                    f.write('\n')
-
-    export_as_jsonl(train, train_output_path)
-    export_as_jsonl(test, test_output_path)
 
 def process_idt():
     from pathlib import Path
@@ -1585,4 +1595,4 @@ def process_absabank_imm():
 
 
 if __name__ == '__main__':
-    process_sdt()
+    process_mim_gold_ner()

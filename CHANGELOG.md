@@ -26,6 +26,36 @@ and this project adheres to
 - Enforcing at most one GPU, as training on multiple GPUs led to tensors being
   allocated to different devices.
 
+### Removed
+- Properly removed the Icelandic WikiANN-IS data files. It was removed from the
+  package, but the underlying files were still lying in the repository.
+
+
+## [v1.2.0] - 2021-10-15
+### Added
+- Added the Icelandic NER dataset MIM-GOLD-NER. This can now be loaded as
+  `mim-gold-ner` in the `Benchmark` class and through the CLI.
+
+### Removed
+- Removed the Icelandic WikiANN-IS dataset, as this has now been replaced by
+  the MIM-GOLD-NER dataset.
+
+
+## [v1.1.3] - 2021-10-04
+### Fixed
+- Added truncation and padding when tokenising token classification datasets.
+
+
+## [v1.1.2] - 2021-09-27
+### Fixed
+- Missing dependency parsing tags.
+
+
+## [v1.1.1] - 2021-09-27
+### Fixed
+- Reduce validation batch size if CUDA runs out of memory, rather than only
+  reducing training batch size.
+
 
 ## [v1.1.0] - 2021-09-13
 ### Added
