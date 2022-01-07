@@ -139,7 +139,7 @@ class TextClassificationBenchmark(BaseBenchmark, ABC):
         Returns:
             HuggingFace dataset: The preprocessed dataset.
         '''
-        if framework in ['pytorch', 'tensorflow', 'jax']:
+        if framework == 'pytorch':
             tokenizer = kwargs['tokenizer']
 
             def tokenise(examples: dict) -> dict:

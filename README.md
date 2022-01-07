@@ -20,9 +20,9 @@ terminal:
 $ pip install scandeval[all]
 ```
 
-This will install all the model frameworks currently supported (`pytorch`,
-`tensorflow`, `jax` and `spacy`). If you know you only need one of these, you
-can install a slimmer package like so:
+This will install all the model frameworks currently supported (`pytorch` and
+`spacy`). If you know you only need one of these, you can install a slimmer
+package like so:
 ```shell
 $ pip install scandeval[pytorch]
 ```
@@ -113,7 +113,6 @@ of all the datasets that can be loaded.
 ## Documentation
 The full documentation can be found on
 [ReadTheDocs](https://scandeval.readthedocs.io/en/latest).
-
 
 ## Remarks
 The image used in the logo has been created by the amazing [Scandinavia and the

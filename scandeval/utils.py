@@ -12,11 +12,10 @@ import torch
 from pydoc import locate
 from transformers import (AutoModelForTokenClassification,
                           AutoModelForSequenceClassification,
-                          TFAutoModelForTokenClassification,
-                          TFAutoModelForSequenceClassification,
-                          FlaxAutoModelForTokenClassification,
-                          FlaxAutoModelForSequenceClassification,
-                          Trainer)
+                          Trainer,
+                          ProgressCallback)
+from tqdm.auto import tqdm
+from collections.abc import Sized
 
 
 def get_all_datasets() -> list:
@@ -121,11 +120,7 @@ def get_all_datasets() -> list:
 
 PT_CLS = {'token-classification': AutoModelForTokenClassification,
           'text-classification': AutoModelForSequenceClassification}
-TF_CLS = {'token-classification': TFAutoModelForTokenClassification,
-          'text-classification': TFAutoModelForSequenceClassification}
-JAX_CLS = {'token-classification': FlaxAutoModelForTokenClassification,
-           'text-classification': FlaxAutoModelForSequenceClassification}
-MODEL_CLASSES = dict(pytorch=PT_CLS, tensorflow=TF_CLS, jax=JAX_CLS)
+MODEL_CLASSES = dict(pytorch=PT_CLS)
 
 
 class TwolabelTrainer(Trainer):
@@ -193,6 +188,7 @@ def block_terminal_output():
     warnings.filterwarnings('ignore', module='seqeval*')
 
     logging.getLogger('filelock').setLevel(logging.ERROR)
+    logging.getLogger('absl').setLevel(logging.ERROR)
 
     # Disable the tokenizer progress bars
     ds_logging.get_verbosity = lambda: ds_logging.NOTSET
@@ -246,3 +242,24 @@ class DocInherit(object):
 
 
 doc_inherit = DocInherit
+
+
+class NeverLeaveProgressCallback(ProgressCallback):
+    '''Progress callback which never leaves the progress bar'''
+
+    def on_train_begin(self, args, state, control, **kwargs):
+        if state.is_local_process_zero:
+            desc = 'Finetuning model'
+            self.training_bar = tqdm(total=None, leave=False, desc=desc)
+        self.current_step = 0
+
+    def on_prediction_step(self, args, state, control, eval_dataloader=None,
+                           **kwargs):
+        correct_dtype = isinstance(eval_dataloader.dataset, Sized)
+        if state.is_local_process_zero and correct_dtype:
+            if self.prediction_bar is None:
+                desc = 'Evaluating model'
+                self.prediction_bar = tqdm(total=len(eval_dataloader),
+                                           leave=False,
+                                           desc=desc)
+            self.prediction_bar.update(1)

@@ -40,6 +40,7 @@ class PosBenchmark(TokenClassificationBenchmark):
         cache_dir (str): Directory where models are cached.
         two_labels (bool): Whether two labels should be predicted.
         split_point (int or None): Splitting point of `id2label` into labels.
+
         verbose (bool): Whether to print additional output.
     '''
     def __init__(self,

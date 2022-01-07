@@ -12,7 +12,8 @@ from transformers import (PreTrainedTokenizerBase,
                           PrinterCallback,
                           EarlyStoppingCallback,
                           RobertaForSequenceClassification,
-                          RobertaForTokenClassification)
+                          RobertaForTokenClassification,
+                          ProgressCallback)
 from typing import Dict, Optional, Tuple, List, Any
 import numpy as np
 import requests
@@ -28,7 +29,8 @@ import re
 import random
 
 from ...utils import (MODEL_CLASSES, is_module_installed, InvalidBenchmark,
-                      TwolabelTrainer, get_all_datasets)
+                      TwolabelTrainer, get_all_datasets,
+                      NeverLeaveProgressCallback)
 
 
 logger = logging.getLogger(__name__)
@@ -77,7 +79,7 @@ class BaseBenchmark(ABC):
         name (str): The name of the dataset.
         task (str): The type of task to be benchmarked.
         metric_names (dict): The names of the metrics.
-        id2label (dict or None): A dictionary converting indices to labels.
+        id2label (list or None): A list converting indices to labels.
         label2id (dict or None): A dictionary converting labels to indices.
         num_labels (int or None): The number of labels in the dataset.
         label_synonyms (list of lists of str): Synonyms of the dataset labels.
@@ -138,6 +140,24 @@ class BaseBenchmark(ABC):
         # done by setting it to warning (the default)
         if verbose:
             tf_logging.set_verbosity_warning()
+
+    @staticmethod
+    def _get_model_task(task: Optional[str]) -> str:
+        '''Get the task of the model.
+
+        Args:
+            task (str or None): The task of the model.
+
+        Returns:
+            str: The task of the model.
+        '''
+        pretrained_tasks = ['fill-mask',
+                            'sentence-similarity',
+                            'feature-extraction']
+        if task is None or task in pretrained_tasks:
+            return 'fill-mask'
+        else:
+            return task
 
     def _get_model_class(self, framework: str) -> _BaseAutoModelClass:
         return MODEL_CLASSES[framework][self.task]
@@ -207,8 +227,8 @@ class BaseBenchmark(ABC):
                 model.
             framework (str or None, optional):
                 The framework the model has been built in. Currently supports
-                'pytorch', 'tensorflow', 'jax' and 'spacy'. If None then this
-                will be inferred from `model_id`. Defaults to None.
+                'pytorch' and 'spacy'. If None then this will be inferred from
+                `model_id`. Defaults to None.
             task (str or None, optional):
                 The task for which the model was trained on. If None then this
                 will be inferred from `model_id`. Defaults to None.
@@ -236,10 +256,6 @@ class BaseBenchmark(ABC):
                 import torch
                 import torch.nn as nn
                 from torch.nn import Parameter
-            elif framework == 'tensorflow':
-                import tensorflow  # noqa
-            elif framework == 'jax':
-                import flax  # noqa
             elif framework == 'spacy':
                 import spacy
 
@@ -256,7 +272,7 @@ class BaseBenchmark(ABC):
                    f'scandeval[{framework}]`.')
             raise ModuleNotFoundError(msg)
 
-        if framework in ['pytorch', 'tensorflow', 'jax']:
+        if framework == 'pytorch':
 
             if task == 'fill-mask':
                 params = dict(num_labels=self.num_labels,
@@ -324,7 +340,8 @@ class BaseBenchmark(ABC):
 
                 # If the model does not have `label2id` or `id2label`
                 # conversions, then use the defaults
-                if model_label2id is None and model_id2label is None:
+                if (task == 'fill-mask' or
+                        (model_label2id is None and model_id2label is None)):
                     model.config.label2id = self.label2id
                     model.config.id2label = self.id2label
 
@@ -404,7 +421,7 @@ class BaseBenchmark(ABC):
                         # exception
                         if num_new_labels == self.num_labels:
                             if len(set(flat_old_synonyms)
-                                    .intersection(old_id2label)) == 0:
+                                   .intersection(old_id2label)) == 0:
                                 msg = ('The model has not been trained on '
                                        'any of the labels in the dataset, or '
                                        'synonyms thereof.')
@@ -491,7 +508,9 @@ class BaseBenchmark(ABC):
             if not is_module_installed(local_model_id):
                 url = (f'https://huggingface.co/{model_id}/resolve/main/'
                        f'{local_model_id}-any-py3-none-any.whl')
-                subprocess.run(['pip3', 'install', url])
+                logger.info('Model not installed. Downloading model')
+                subprocess.run(['pip3', 'install', url, '--quiet'])
+                logger.info('Finished downloading model. Resuming benchmark:')
 
             # Load the model
             try:
@@ -575,7 +594,7 @@ class BaseBenchmark(ABC):
     def _log_metrics(self,
                      metrics: Dict[str, List[Dict[str, float]]],
                      finetuned: bool,
-                     model_id: str):
+                     model_id: str) -> Dict[str, dict]:
         '''Log the metrics.
 
         Args:
@@ -583,10 +602,18 @@ class BaseBenchmark(ABC):
                 The metrics that are to be logged. This is a dict with keys
                 'train' and 'test', with values being lists of dictionaries
                 full of metrics.
-            ta
+            finetuned (bool):
+                Whether the model is finetuned or not.
             model_id (str):
                 The full HuggingFace Hub path to the pretrained transformer
                 model.
+
+        Returns:
+            dict:
+                A dictionary with keys 'raw_metrics' and 'total', with
+                'raw_metrics' being identical to `metrics` and 'total' being
+                a dictionary with the aggregated metrics (means and standard
+                errors).
         '''
         # Initial logging message
         if finetuned:
@@ -595,6 +622,9 @@ class BaseBenchmark(ABC):
         else:
             msg = (f'Finished evaluation of {model_id} on {self.name}.')
         logger.info(msg)
+
+        # Initialise the total dict
+        total_dict = dict()
 
         # Logging of the metric(s)
         for metric_key, metric_name in self.metric_names.items():
@@ -612,7 +642,22 @@ class BaseBenchmark(ABC):
                 train_se *= 100
                 msg += f'\n  - Train: {train_score:.2f} ± {train_se:.2f}'
 
+                # Store the aggregated train metrics
+                total_dict[f'train_{metric_key}'] = train_score
+                total_dict[f'train_{metric_key}_se'] = train_se
+
+            # Store the aggregated test metrics
+            total_dict[f'test_{metric_key}'] = test_score
+            total_dict[f'test_{metric_key}_se'] = test_se
+
+            # Log the scores
             logger.info(msg)
+
+        # Define a dict with both the raw metrics and the aggregated metrics
+        extended_metrics = dict(raw_metrics=metrics, total=total_dict)
+
+        # Return the extended metrics
+        return extended_metrics
 
     @abstractmethod
     def _get_spacy_predictions_and_labels(self,
@@ -632,8 +677,7 @@ class BaseBenchmark(ABC):
         '''
         pass
 
-    @staticmethod
-    def _fetch_model_metadata(model_id: str) -> Dict[str, str]:
+    def _fetch_model_metadata(self, model_id: str) -> Dict[str, str]:
         '''Fetches metdataof a model from the HuggingFace Hub.
 
         Args:
@@ -668,9 +712,11 @@ class BaseBenchmark(ABC):
                       for a in a_tags_with_class
                       if 'tag-red' in a['class']]
 
+        # Set up the order of the frameworks
+        valid_frameworks = ['pytorch', 'spacy']
+
         # Extract a single valid framework in which the model has been
         # implemented
-        valid_frameworks = ['pytorch', 'tensorflow', 'jax', 'spacy']
         for valid_framework in valid_frameworks:
             if valid_framework in frameworks:
                 framework = valid_framework
@@ -687,14 +733,14 @@ class BaseBenchmark(ABC):
         # Extract a single valid task on which the model has been trained. If
         # no task has been specified on the model card then assume that it is
         # 'fill-mask'
-        task = tasks[0] if len(tasks) > 0 else 'fill-mask'
+        task = self._get_model_task(tasks[0]) if len(tasks) else 'fill-mask'
 
         return dict(framework=framework, task=task)
 
     def benchmark(self,
                   model_id: str,
                   progress_bar: bool = True
-                  ) -> Dict[str, List[Dict[str, float]]]:
+                  ) -> Dict[str, dict]:
         '''Benchmark a model.
 
         Args:
@@ -706,8 +752,9 @@ class BaseBenchmark(ABC):
 
         Returns:
             dict:
-                The keys in the dict are 'train' and 'test', and the values
-                contain the metrics for that given dataset split.
+                The keys in the dict are 'raw_metrics' and 'total', with all
+                the raw metrics in the first dictionary and the aggregated
+                metrics in the second.
 
         Raises:
             RuntimeError: If the extracted framework is not recognized.
@@ -730,10 +777,21 @@ class BaseBenchmark(ABC):
         # Initialise random number generator
         rng = np.random.default_rng(4242)
 
+        # Remove empty examples from the datasets
+        try:
+            train = train.filter(lambda x: len(x['tokens']) > 0)
+            test = test.filter(lambda x: len(x['tokens']) > 0)
+        except KeyError:
+            try:
+                train = train.filter(lambda x: len(x['doc']) > 0)
+                test = test.filter(lambda x: len(x['doc']) > 0)
+            except KeyError:
+                pass
+
         # Get bootstrap sample indices
         test_bidxs = rng.integers(0, len(test), size=(9, len(test)))
 
-        if framework in ['pytorch', 'tensorflow', 'jax']:
+        if framework in ['pytorch']:
 
             # Set platform-dependent random seeds
             if framework == 'pytorch':
@@ -741,10 +799,6 @@ class BaseBenchmark(ABC):
                 torch.manual_seed(4242)
                 torch.cuda.manual_seed_all(4242)
                 torch.backends.cudnn.benchmark = False
-
-            elif framework == 'tensorflow':
-                import tensorflow as tf
-                tf.random.set_seed(4242)
 
             # Extract the model and tokenizer
             model = model_dict['model']
@@ -770,7 +824,7 @@ class BaseBenchmark(ABC):
             # Set up progress bar
             if finetune:
                 if progress_bar:
-                    itr = tqdm(range(10))
+                    itr = tqdm(range(10), desc='Benchmarking')
                 else:
                     itr = range(10)
             else:
@@ -778,11 +832,6 @@ class BaseBenchmark(ABC):
 
             # Load the data collator
             data_collator = self._load_data_collator(tokenizer)
-
-            # Enable `transformers` verbosity to see a training
-            # progress bar
-            if progress_bar:
-                tf_logging.set_verbosity_warning()
 
             # Initialise training arguments
             training_args = TrainingArguments(
@@ -801,9 +850,10 @@ class BaseBenchmark(ABC):
                 load_best_model_at_end=True
             )
 
-            # Disable `transformers` verbosity again
-            if not self.verbose:
-                tf_logging.set_verbosity_error()
+            # Manually set `disable_tqdm` to `False` if `progress_bar` is
+            # `True`
+            if progress_bar:
+                training_args.disable_tqdm = False
 
             metrics = defaultdict(list)
             for _ in itr:
@@ -840,10 +890,24 @@ class BaseBenchmark(ABC):
                         else:
                             trainer = Trainer(**trainer_args)
 
+                        # Set transformers logging back to error
+                        tf_logging.set_verbosity_error()
+
+                        # Remove trainer logging
+                        trainer.log = lambda _: None
+
                         # Remove the callback which prints the metrics after
                         # each evaluation
                         if not self.verbose:
                             trainer.remove_callback(PrinterCallback)
+
+                        # Remove the progress bar callback
+                        trainer.remove_callback(ProgressCallback)
+
+                        # Add the custom progress callback if `progress_bar` is
+                        # True
+                        if progress_bar:
+                            trainer.add_callback(NeverLeaveProgressCallback)
 
                         # Finetune the model
                         if finetune:
@@ -857,8 +921,15 @@ class BaseBenchmark(ABC):
                             )
                             metrics['train'].append(train_metrics)
 
+                        # Set up a progress bar for the test datasets if we are
+                        # not finetuning
+                        if not finetune and progress_bar:
+                            test_itr = tqdm(tests, desc='Benchmarking')
+                        else:
+                            test_itr = tests
+
                         # Log test metrics
-                        for dataset in tests:
+                        for dataset in test_itr:
                             test_metrics = trainer.evaluate(
                                 dataset,
                                 metric_key_prefix='test'
@@ -869,8 +940,16 @@ class BaseBenchmark(ABC):
 
                     except (RuntimeError, ValueError, IndexError) as e:
 
+                        # We assume that all these CUDA errors are caused by
+                        # insufficient GPU memory
+                        cuda_errs = [
+                            'CUDA out of memory',
+                            'CUDA error'
+                        ]
+
                         # If it is an unknown error, then simply report it
-                        if not str(e).startswith('CUDA out of memory'):
+                        if all([err not in str(e) for err in cuda_errs]):
+
                             # Garbage collection, to avoid memory issues
                             try:
                                 del model
@@ -893,7 +972,6 @@ class BaseBenchmark(ABC):
                         training_args.per_device_train_batch_size = bs // 2
                         training_args.per_device_eval_batch_size = bs // 2
                         training_args.gradient_accumulation_steps = ga * 2
-                        trainer.args = training_args
 
                         # Garbage collection, to avoid memory issues
                         try:
@@ -906,7 +984,9 @@ class BaseBenchmark(ABC):
                             pass
                         gc.collect()
 
-            self._log_metrics(metrics, model_id=model_id, finetuned=finetune)
+            metrics = self._log_metrics(metrics=metrics,
+                                        model_id=model_id,
+                                        finetuned=finetune)
 
             # Garbage collection, to avoid memory issues
             try:
@@ -932,7 +1012,7 @@ class BaseBenchmark(ABC):
 
             # Get the test predictions
             all_test_metrics = list()
-            for dataset in tests:
+            for dataset in tqdm(tests, desc='Benchmarking'):
                 preds_labels = self._get_spacy_predictions_and_labels(
                     model=model,
                     dataset=dataset,
@@ -976,7 +1056,9 @@ class BaseBenchmark(ABC):
                 all_train_metrics.append(train_metrics)
                 metrics['train'] = all_train_metrics
 
-            self._log_metrics(metrics, model_id=model_id, finetuned=False)
+            metrics = self._log_metrics(metrics=metrics,
+                                        model_id=model_id,
+                                        finetuned=False)
 
             # Garbage collection, to avoid memory issues
             try:
