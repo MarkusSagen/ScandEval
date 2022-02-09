@@ -21,8 +21,8 @@ $ pip install scandeval[all]
 ```
 
 This will install all the model frameworks currently supported (`pytorch`,
-`tensorflow`, `jax` and `spacy`). If you know you only need one of these, you
-can install a slimmer package like so:
+`spacy`, and `jax`). If you know you only need one of these, you can install a slimmer
+package like so:
 ```shell
 $ pip install scandeval[pytorch]
 ```
@@ -62,6 +62,13 @@ multiple arguments. Here is an example with two models:
 ```shell
 $ scandeval --model_id <model_id1> --model_id <model_id2> --dataset angry-tweets
 ```
+
+The specific model version to use can also be added after the suffix '@':
+```
+$ scandeval --model_id <model_id>@<commit>
+```
+It can be a branch name, a tag name, or a commit id. This versioning is
+currently only supported for HuggingFace models. It defaults to 'main' for latest.
 
 See all the arguments and options available for the `scandeval` command by
 typing

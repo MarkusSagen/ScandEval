@@ -38,6 +38,8 @@ class PosBenchmark(TokenClassificationBenchmark):
         label_synonyms (list of lists of str): Synonyms of the dataset labels.
         evaluate_train (bool): Whether the training set should be evaluated.
         cache_dir (str): Directory where models are cached.
+        two_labels (bool): Whether two labels should be predicted.
+        split_point (int or None): Splitting point of `id2label` into labels.
         verbose (bool): Whether to print additional output.
     '''
 

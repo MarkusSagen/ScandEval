@@ -18,6 +18,7 @@ class WikiannFoBenchmark(NerBenchmark):
         evaluate_train (bool, optional):
             Whether the models should be evaluated on the training scores.
             Defaults to False.
+            Whether to prefer Jax for the evaluation. Defaults to False.
         verbose (bool, optional):
             Whether to print additional output during evaluation. Defaults to
             False.
@@ -34,7 +35,6 @@ class WikiannFoBenchmark(NerBenchmark):
         cache_dir (str): Directory where models are cached.
         two_labels (bool): Whether two labels should be predicted.
         split_point (int or None): Splitting point of `id2label` into labels.
-        verbose (bool): Whether to print additional output.
     '''
     def __init__(self,
                  cache_dir: str = '.benchmark_models',

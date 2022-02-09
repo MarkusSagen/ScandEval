@@ -11,7 +11,7 @@ from transformers import (PreTrainedTokenizerBase,
                           EarlyStoppingCallback,
                           RobertaForSequenceClassification,
                           RobertaForTokenClassification,
-                          Trainer)
+                          ProgressCallback)
 from typing import Dict, Optional, Tuple, List, Any
 import numpy as np
 import requests
@@ -27,7 +27,8 @@ import re
 import random
 
 from ...utils import (MODEL_CLASSES, is_module_installed, InvalidBenchmark,
-                      get_all_datasets, DepTrainer)
+                      DepTrainer, TwolabelTrainer, get_all_datasets,
+                      NeverLeaveProgressCallback)
 
 
 logger = logging.getLogger(__name__)
@@ -67,7 +68,7 @@ class BaseBenchmark(ABC):
         name (str): The name of the dataset.
         task (str): The type of task to be benchmarked.
         metric_names (dict): The names of the metrics.
-        id2label (dict or None): A dictionary converting indices to labels.
+        id2label (list or None): A list converting indices to labels.
         label2id (dict or None): A dictionary converting labels to indices.
         num_labels (int or None): The number of labels in the dataset.
         label_synonyms (list of lists of str): Synonyms of the dataset labels.
@@ -123,7 +124,25 @@ class BaseBenchmark(ABC):
         if verbose:
             tf_logging.set_verbosity_warning()
 
-    def _get_model_class(self, framework: str):
+    @staticmethod
+    def _get_model_task(task: Optional[str]) -> str:
+        '''Get the task of the model.
+
+        Args:
+            task (str or None): The task of the model.
+
+        Returns:
+            str: The task of the model.
+        '''
+        pretrained_tasks = ['fill-mask',
+                            'sentence-similarity',
+                            'feature-extraction']
+        if task is None or task in pretrained_tasks:
+            return 'fill-mask'
+        else:
+            return task
+
+    def _get_model_class(self, framework: str) -> _BaseAutoModelClass:
         return MODEL_CLASSES[framework][self.task]
 
     @staticmethod
@@ -181,6 +200,7 @@ class BaseBenchmark(ABC):
 
     def _load_model(self,
                     model_id: str,
+                    revision: Optional[str] = 'main',
                     framework: Optional[str] = None,
                     task: Optional[str] = None) -> Dict[str, Any]:
         '''Load the model.
@@ -189,10 +209,14 @@ class BaseBenchmark(ABC):
             model_id (str):
                 The full HuggingFace Hub path to the pretrained transformer
                 model.
+            revision (str or None, optional):
+                The specific model version to use. It can be a branch name,
+                a tag name, or a commit id. Currently only supported for
+                HuggingFace models. Defaults to 'main' for latest.
             framework (str or None, optional):
                 The framework the model has been built in. Currently supports
-                'pytorch', 'tensorflow', 'jax' and 'spacy'. If None then this
-                will be inferred from `model_id`. Defaults to None.
+                'pytorch', 'jax', and 'spacy'. If None then this will be
+                inferred from `model_id`. Defaults to None.
             task (str or None, optional):
                 The task for which the model was trained on. If None then this
                 will be inferred from `model_id`. Defaults to None.
@@ -215,15 +239,16 @@ class BaseBenchmark(ABC):
                 task = model_metadata['task']
 
         # Ensure that the framework is installed
+        from_flax = False
         try:
-            if framework == 'pytorch':
+            if framework in ('pytorch', 'jax'):
                 import torch
                 import torch.nn as nn
                 from torch.nn import Parameter
-            elif framework == 'tensorflow':
-                import tensorflow as tf
-            elif framework == 'jax':
-                import flax
+                if framework == 'jax':
+                    from_flax = True
+                    import jax  # noqa
+                    framework = 'pytorch'
             elif framework == 'spacy':
                 import spacy
 
@@ -240,7 +265,7 @@ class BaseBenchmark(ABC):
                    f'scandeval[{framework}]`.')
             raise ModuleNotFoundError(msg)
 
-        if framework in ['pytorch', 'tensorflow', 'jax']:
+        if framework == 'pytorch':
 
             if task == 'fill-mask':
                 params = dict(num_labels=self.num_labels,
@@ -253,7 +278,9 @@ class BaseBenchmark(ABC):
                 # If the model ID specifies a random model, then load that.
                 if model_id.startswith('random'):
                     rnd_id = 'xlm-roberta-base'
-                    config = AutoConfig.from_pretrained(rnd_id, **params)
+                    config = AutoConfig.from_pretrained(rnd_id,
+                                                        revision=revision,
+                                                        **params)
 
                     if model_id == 'random-roberta-sequence-clf':
                         model_cls = RobertaForSequenceClassification
@@ -268,11 +295,15 @@ class BaseBenchmark(ABC):
 
                 # Otherwise load the pretrained model
                 else:
-                    config = AutoConfig.from_pretrained(model_id, **params)
+                    config = AutoConfig.from_pretrained(model_id,
+                                                        revision=revision,
+                                                        **params)
                     model_cls = self._get_model_class(framework=framework)
                     model = model_cls.from_pretrained(model_id,
+                                                      revision=revision,
                                                       config=config,
-                                                      cache_dir=self.cache_dir)
+                                                      cache_dir=self.cache_dir,
+                                                      from_flax=from_flax)
 
                 # Get the `label2id` and `id2label` conversions from the model
                 # config
@@ -308,7 +339,8 @@ class BaseBenchmark(ABC):
 
                 # If the model does not have `label2id` or `id2label`
                 # conversions, then use the defaults
-                if model_label2id is None and model_id2label is None:
+                if (task == 'fill-mask' or
+                        (model_label2id is None and model_id2label is None)):
                     model.config.label2id = self.label2id
                     model.config.id2label = self.id2label
 
@@ -318,6 +350,7 @@ class BaseBenchmark(ABC):
                 # have not been trained on (it will just always get those
                 # labels wrong)
                 else:
+
                     # Collect the dataset labels and model labels in the
                     # `model_id2label` conversion list
                     for label in self.id2label:
@@ -326,6 +359,22 @@ class BaseBenchmark(ABC):
                                 if label in lst]
                         if all([syn not in model_id2label for syn in syns]):
                             model_id2label.append(label)
+
+                    # Ensure that the model_id2label does not contain
+                    # duplicates modulo synonyms
+                    for idx, label in enumerate(model_id2label):
+                        try:
+                            canonical_syn = [syn_lst
+                                             for syn_lst in self.label_synonyms
+                                             if label in syn_lst][0][-1]
+                            model_id2label[idx] = canonical_syn
+
+                        # IndexError appears when the label does not appear
+                        # within the label_synonyms (i.e. that we added it in
+                        # the previous step). In this case, we just skip the
+                        # label.
+                        except IndexError:
+                            continue
 
                     # Get the synonyms of all the labels, new ones included
                     new_synonyms = self.label_synonyms
@@ -371,7 +420,7 @@ class BaseBenchmark(ABC):
                         # exception
                         if num_new_labels == self.num_labels:
                             if len(set(flat_old_synonyms)
-                                    .intersection(old_id2label)) == 0:
+                                   .intersection(old_id2label)) == 0:
                                 msg = ('The model has not been trained on '
                                        'any of the labels in the dataset, or '
                                        'synonyms thereof.')
@@ -431,11 +480,15 @@ class BaseBenchmark(ABC):
             # constructed.
             if model_id.startswith('random'):
                 params = dict(use_fast=True, add_prefix_space=True)
-                tokenizer = AutoTokenizer.from_pretrained(rnd_id, **params)
+                tokenizer = AutoTokenizer.from_pretrained(rnd_id,
+                                                          revision=revision,
+                                                          **params)
             else:
                 prefix = 'Roberta' in type(model).__name__
                 params = dict(use_fast=True, add_prefix_space=prefix)
-                tokenizer = AutoTokenizer.from_pretrained(model_id, **params)
+                tokenizer = AutoTokenizer.from_pretrained(model_id,
+                                                          revision=revision,
+                                                          **params)
 
             # Set the maximal length of the tokenizer to the model's maximal
             # length. This is required for proper truncation
@@ -474,10 +527,16 @@ class BaseBenchmark(ABC):
             if not is_module_installed(local_model_id):
                 url = (f'https://huggingface.co/{model_id}/resolve/main/'
                        f'{local_model_id}-any-py3-none-any.whl')
-                subprocess.run(['pip3', 'install', '--no-cache-dir',  url])
+                logger.info('Model not installed. Downloading model')
+                subprocess.run(['pip3', 'install', url, '--quiet'])
+                logger.info('Finished downloading model. Resuming benchmark:')
 
             # Load the model
-            model = spacy.load(local_model_id)
+            try:
+                model = spacy.load(local_model_id)
+            except OSError:
+                raise InvalidBenchmark(f'The model {model_id} could not '
+                                       f'be installed from spaCy.')
 
             return dict(model=model)
 
@@ -554,7 +613,7 @@ class BaseBenchmark(ABC):
     def _log_metrics(self,
                      metrics: Dict[str, List[Dict[str, float]]],
                      finetuned: bool,
-                     model_id: str):
+                     model_id: str) -> Dict[str, dict]:
         '''Log the metrics.
 
         Args:
@@ -562,10 +621,18 @@ class BaseBenchmark(ABC):
                 The metrics that are to be logged. This is a dict with keys
                 'train' and 'test', with values being lists of dictionaries
                 full of metrics.
-            ta
+            finetuned (bool):
+                Whether the model is finetuned or not.
             model_id (str):
                 The full HuggingFace Hub path to the pretrained transformer
                 model.
+
+        Returns:
+            dict:
+                A dictionary with keys 'raw_metrics' and 'total', with
+                'raw_metrics' being identical to `metrics` and 'total' being
+                a dictionary with the aggregated metrics (means and standard
+                errors).
         '''
         # Initial logging message
         if finetuned:
@@ -574,6 +641,9 @@ class BaseBenchmark(ABC):
         else:
             msg = (f'Finished evaluation of {model_id} on {self.name}.')
         logger.info(msg)
+
+        # Initialise the total dict
+        total_dict = dict()
 
         # Logging of the metric(s)
         for metric_key, metric_name in self.metric_names.items():
@@ -591,7 +661,22 @@ class BaseBenchmark(ABC):
                 train_se *= 100
                 msg += f'\n  - Train: {train_score:.2f} ± {train_se:.2f}'
 
+                # Store the aggregated train metrics
+                total_dict[f'train_{metric_key}'] = train_score
+                total_dict[f'train_{metric_key}_se'] = train_se
+
+            # Store the aggregated test metrics
+            total_dict[f'test_{metric_key}'] = test_score
+            total_dict[f'test_{metric_key}_se'] = test_se
+
+            # Log the scores
             logger.info(msg)
+
+        # Define a dict with both the raw metrics and the aggregated metrics
+        extended_metrics = dict(raw_metrics=metrics, total=total_dict)
+
+        # Return the extended metrics
+        return extended_metrics
 
     @abstractmethod
     def _get_spacy_predictions_and_labels(self,
@@ -611,8 +696,7 @@ class BaseBenchmark(ABC):
         '''
         pass
 
-    @staticmethod
-    def _fetch_model_metadata(model_id: str) -> Dict[str, str]:
+    def _fetch_model_metadata(self, model_id: str) -> Dict[str, str]:
         '''Fetches metdataof a model from the HuggingFace Hub.
 
         Args:
@@ -636,6 +720,7 @@ class BaseBenchmark(ABC):
             return dict(task='fill-mask', framework='pytorch')
 
         # Parse all the anchor tags from the model website
+        model_id, *_ = model_id.split('@', 1)
         url = 'https://www.huggingface.co/' + model_id
         html = requests.get(url).text
         soup = BeautifulSoup(html, 'html.parser')
@@ -647,9 +732,11 @@ class BaseBenchmark(ABC):
                       for a in a_tags_with_class
                       if 'tag-red' in a['class']]
 
+        # Set up the order of the frameworks
+        valid_frameworks = ['pytorch', 'spacy', 'jax']
+
         # Extract a single valid framework in which the model has been
         # implemented
-        valid_frameworks = ['pytorch', 'tensorflow', 'jax', 'spacy']
         for valid_framework in valid_frameworks:
             if valid_framework in frameworks:
                 framework = valid_framework
@@ -666,27 +753,31 @@ class BaseBenchmark(ABC):
         # Extract a single valid task on which the model has been trained. If
         # no task has been specified on the model card then assume that it is
         # 'fill-mask'
-        task = tasks[0] if len(tasks) > 0 else 'fill-mask'
+        task = self._get_model_task(tasks[0]) if len(tasks) else 'fill-mask'
 
         return dict(framework=framework, task=task)
 
     def benchmark(self,
                   model_id: str,
                   progress_bar: bool = True
-                  ) -> Dict[str, List[Dict[str, float]]]:
+                  ) -> Dict[str, dict]:
         '''Benchmark a model.
 
         Args:
             model_id (str):
                 The full HuggingFace Hub path to the pretrained transformer
-                model.
+                model. The specific model version to use can be added after
+                the suffix '@': "model_id@v1.0.0". It can be a branch name,
+                a tag name, or a commit id (currently only supported for
+                HuggingFace models, and it defaults to 'main' for latest).
             progress_bar (bool, optional):
                 Whether to show a progress bar or not. Defaults to True.
 
         Returns:
             dict:
-                The keys in the dict are 'train' and 'test', and the values
-                contain the metrics for that given dataset split.
+                The keys in the dict are 'raw_metrics' and 'total', with all
+                the raw metrics in the first dictionary and the aggregated
+                metrics in the second.
 
         Raises:
             RuntimeError: If the extracted framework is not recognized.
@@ -695,7 +786,13 @@ class BaseBenchmark(ABC):
         model_metadata = self._fetch_model_metadata(model_id)
         framework = model_metadata['framework']
         task = model_metadata['task']
-        model_dict = self._load_model(model_id, **model_metadata)
+        if '@' in model_id:
+            model_id, revision = model_id.split('@', 1)
+        else:
+            revision = 'main'
+        model_dict = self._load_model(model_id,
+                                      revision=revision,
+                                      **model_metadata)
 
         # Print the number of parameters
         num_parameters = model_dict.get('num_parameters')
@@ -715,21 +812,28 @@ class BaseBenchmark(ABC):
         # Initialise random number generator
         rng = np.random.default_rng(4242)
 
+        # Remove empty examples from the datasets
+        try:
+            train = train.filter(lambda x: len(x['tokens']) > 0)
+            test = test.filter(lambda x: len(x['tokens']) > 0)
+        except KeyError:
+            try:
+                train = train.filter(lambda x: len(x['doc']) > 0)
+                test = test.filter(lambda x: len(x['doc']) > 0)
+            except KeyError:
+                pass
+
         # Get bootstrap sample indices
         test_bidxs = rng.integers(0, len(test), size=(9, len(test)))
 
-        if framework in ['pytorch', 'tensorflow', 'jax']:
+        if framework in ('pytorch', 'jax'):
+            framework = 'pytorch'
 
             # Set platform-dependent random seeds
-            if framework == 'pytorch':
-                import torch
-                torch.manual_seed(4242)
-                torch.cuda.manual_seed_all(4242)
-                torch.backends.cudnn.benchmark = False
-
-            elif framework == 'tensorflow':
-                import tensorflow as tf
-                tf.random.set_seed(4242)
+            import torch
+            torch.manual_seed(4242)
+            torch.cuda.manual_seed_all(4242)
+            torch.backends.cudnn.benchmark = False
 
             # Extract the model and tokenizer
             model = model_dict['model']
@@ -755,7 +859,7 @@ class BaseBenchmark(ABC):
             # Set up progress bar
             if finetune:
                 if progress_bar:
-                    itr = tqdm(range(10))
+                    itr = tqdm(range(10), desc='Benchmarking')
                 else:
                     itr = range(10)
             else:
@@ -763,11 +867,6 @@ class BaseBenchmark(ABC):
 
             # Load the data collator
             data_collator = self._load_data_collator(tokenizer)
-
-            # Enable `transformers` verbosity to see a training
-            # progress bar
-            if progress_bar:
-                tf_logging.set_verbosity_warning()
 
             # Initialise training arguments
             training_args = TrainingArguments(
@@ -781,14 +880,15 @@ class BaseBenchmark(ABC):
                 per_device_eval_batch_size=32,
                 learning_rate=2e-5,
                 num_train_epochs=1000,
-                warmup_steps=(len(train) // 4),
+                warmup_steps=((len(train) * 0.9) // 32),
                 gradient_accumulation_steps=1,
                 load_best_model_at_end=True
             )
 
-            # Disable `transformers` verbosity again
-            if not self.verbose:
-                tf_logging.set_verbosity_error()
+            # Manually set `disable_tqdm` to `False` if `progress_bar` is
+            # `True`
+            if progress_bar:
+                training_args.disable_tqdm = False
 
             metrics = defaultdict(list)
             for _ in itr:
@@ -796,6 +896,7 @@ class BaseBenchmark(ABC):
                     try:
                         # Reinitialise a new model
                         model = self._load_model(model_id,
+                                                 revision=revision,
                                                  **model_metadata)['model']
 
                         # Initialise compute_metrics function
@@ -821,10 +922,24 @@ class BaseBenchmark(ABC):
                                             #callbacks=[early_stopping])
                         trainer = DepTrainer(**trainer_args)
 
+                        # Set transformers logging back to error
+                        tf_logging.set_verbosity_error()
+
+                        # Remove trainer logging
+                        trainer.log = lambda _: None
+
                         # Remove the callback which prints the metrics after
                         # each evaluation
                         if not self.verbose:
                             trainer.remove_callback(PrinterCallback)
+
+                        # Remove the progress bar callback
+                        trainer.remove_callback(ProgressCallback)
+
+                        # Add the custom progress callback if `progress_bar` is
+                        # True
+                        if progress_bar:
+                            trainer.add_callback(NeverLeaveProgressCallback)
 
                         # Finetune the model
                         if finetune:
@@ -838,8 +953,15 @@ class BaseBenchmark(ABC):
                             )
                             metrics['train'].append(train_metrics)
 
+                        # Set up a progress bar for the test datasets if we are
+                        # not finetuning
+                        if not finetune and progress_bar:
+                            test_itr = tqdm(tests, desc='Benchmarking')
+                        else:
+                            test_itr = tests
+
                         # Log test metrics
-                        for dataset in tests:
+                        for dataset in test_itr:
                             test_metrics = trainer.evaluate(
                                 dataset,
                                 metric_key_prefix='test'
@@ -850,8 +972,16 @@ class BaseBenchmark(ABC):
 
                     except (RuntimeError, ValueError, IndexError) as e:
 
+                        # We assume that all these CUDA errors are caused by
+                        # insufficient GPU memory
+                        cuda_errs = [
+                            'CUDA out of memory',
+                            'CUDA error'
+                        ]
+
                         # If it is an unknown error, then simply report it
-                        if not str(e).startswith('CUDA out of memory'):
+                        if all([err not in str(e) for err in cuda_errs]):
+
                             # Garbage collection, to avoid memory issues
                             try:
                                 del model
@@ -874,7 +1004,6 @@ class BaseBenchmark(ABC):
                         training_args.per_device_train_batch_size = bs // 2
                         training_args.per_device_eval_batch_size = bs // 2
                         training_args.gradient_accumulation_steps = ga * 2
-                        trainer.args = training_args
 
                         # Garbage collection, to avoid memory issues
                         try:
@@ -887,7 +1016,9 @@ class BaseBenchmark(ABC):
                             pass
                         gc.collect()
 
-            self._log_metrics(metrics, model_id=model_id, finetuned=finetune)
+            metrics = self._log_metrics(metrics=metrics,
+                                        model_id=model_id,
+                                        finetuned=finetune)
 
             # Garbage collection, to avoid memory issues
             try:
@@ -913,7 +1044,7 @@ class BaseBenchmark(ABC):
 
             # Get the test predictions
             all_test_metrics = list()
-            for dataset in tests:
+            for dataset in tqdm(tests, desc='Benchmarking'):
                 preds_labels = self._get_spacy_predictions_and_labels(
                     model=model,
                     dataset=dataset,
@@ -957,7 +1088,9 @@ class BaseBenchmark(ABC):
                 all_train_metrics.append(train_metrics)
                 metrics['train'] = all_train_metrics
 
-            self._log_metrics(metrics, model_id=model_id, finetuned=False)
+            metrics = self._log_metrics(metrics=metrics,
+                                        model_id=model_id,
+                                        finetuned=False)
 
             # Garbage collection, to avoid memory issues
             try:

@@ -48,29 +48,34 @@ class NerBenchmark(TokenClassificationBenchmark):
                  cache_dir: str = '.benchmark_models',
                  evaluate_train: bool = False,
                  verbose: bool = False):
+        id2label = ['B-LOC', 'I-LOC', 'B-ORG', 'I-ORG', 'B-PER',
+                    'I-PER', 'B-MISC', 'I-MISC', 'O']
         label_synonyms = [
-            ['LABEL_0', self.id2label[0], 'B-Location', 'LOC', 'LOC/PRS',
-                'LOC/ORG'],
-            ['LABEL_1', self.id2label[1], 'I-Location'],
-            ['LABEL_2', self.id2label[2], 'B-Organization', 'ORG', 'ORG/PRS',
-                'OBJ/ORG'],
-            ['LABEL_3', self.id2label[3], 'I-Organization'],
-            ['LABEL_4', self.id2label[4], 'B-Person', 'PER'],
-            ['LABEL_5', self.id2label[5], 'I-Person'],
-            ['LABEL_6', self.id2label[6], 'B-Miscellaneous', 'B-Date',
-                'B-Money', 'B-Percent', 'B-Time', 'PRS/WRK', 'WRK', 'MSR',
-                'EVN'],
-            ['LABEL_7', self.id2label[7], 'I-Miscellaneous', 'I-Date',
-                'I-Money', 'I-Percent', 'I-Time'],
-            ['LABEL_8', self.id2label[8]],
+            ['B-Location', 'B-location', 'B-place', 'B-GPE_LOC', 'B-LOC/ORG',
+             'B-LOCPRS', 'B-LOCORG', id2label[0]],
+            ['I-Location', 'I-location', 'I-place', 'I-GPE_LOC', 'I-LOC/ORG',
+             'I-LOCPRS', 'I-LOCORG', id2label[1]],
+            ['B-Organization', 'B-organization', 'B-inst', 'B-GPE_ORG',
+             'B-ORG/PRS', 'B-OBJ/ORG', 'B-ORGPRS', 'B-OBJORG', id2label[2]],
+            ['I-Organization', 'I-organization', 'I-inst', 'I-GPE_ORG',
+             'I-ORG/PRS', 'I-OBJ/ORG', 'I-ORGPRS', 'I-OBJORG', id2label[3]],
+            ['B-Person', 'B-person', id2label[4]],
+            ['I-Person', 'I-person', id2label[5]],
+            ['B-Miscellaneous', 'B-Misc', 'B-misc', id2label[6]],
+            ['I-Miscellaneous', 'I-Misc', 'I-misc', id2label[7]],
+            ['B-Date', 'B-date', 'I-Date', 'I-date',
+             'B-Time', 'B-time', 'I-Time', 'I-time',
+             'B-Money', 'B-money', 'I-Money', 'I-money',
+             'B-Percent', 'B-percent', 'I-Percent', 'I-percent',
+             id2label[8]]
         ]
         super().__init__(name=name,
                          metric_names=dict(micro_f1='Micro-average F1-score',
                                            micro_f1_no_misc='Micro-average '
                                                             'F1-score without '
                                                             'MISC tags'),
+                         id2label=id2label,
                          label_synonyms=label_synonyms,
-                         id2label=self.id2label,
                          cache_dir=cache_dir,
                          evaluate_train=evaluate_train,
                          verbose=verbose)
@@ -191,6 +196,11 @@ class NerBenchmark(TokenClassificationBenchmark):
 
             # In general return a tag of the form B-tag or I-tag
             else:
-                return f'{token.ent_iob_}-{token.ent_type_}'
+                # Extract tag from spaCy token
+                ent = f'{token.ent_iob_}-{token.ent_type_}'
+
+                # Convert the tag to the its canonical synonym
+                alt_idx = self.label2id[f'{token.ent_iob_}-MISC']
+                return self.id2label[self.label2id.get(ent, alt_idx)]
 
         return [get_ent(token) for token in processed]

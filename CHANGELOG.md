@@ -26,6 +26,178 @@ and this project adheres to
 - Enforcing at most one GPU, as training on multiple GPUs led to tensors being
   allocated to different devices.
 
+## [v2.3.0] - 2022-01-20
+### Added
+- Specific branches/commits/tags can now be benchmarked, using the `@`
+  delimiter. For instance, `scandeval -m model_id@commit_hash` will benchmark
+  the model with model ID `model_id`, stored at commit with hash `commit_hash`.
+  Thanks to [@versae](https://github.com/versae) for contributing!
+
+
+## [v2.2.0] - 2022-01-18
+### Added
+- Added more label synonyms for the DKHate dataset.
+
+
+## [v2.1.0] - 2022-01-17
+### Added
+- Added support for `flax` models. Thanks to
+  [@versae](https://github.com/versae) for contributing!
+
+
+## [v2.0.0] - 2022-01-07
+### Fixed
+- Changed the anonymisation procedure for the tweet datasets `angry-tweets` and
+  `twitter-sent`, now replacing user names by @USER and links by [LINK].
+
+
+## [v1.5.9] - 2021-12-14
+### Fixed
+- Now removing all empty documents from datasets, as well as catching
+  `KeyError` when trying to remove empty documents from dataset.
+
+
+## [v1.5.8] - 2021-12-13
+### Fixed
+- Now explicitly removing empty tokenisations from the dataset.
+
+
+## [v1.5.7] - 2021-12-10
+### Fixed
+- Now catching _all_ `CUDA error` exceptions and treating them as running out
+  of memory. No harm done if this is not the case, however, as the script will
+  simply decrease the batch size until it reaches 1, and if CUDA errors persist
+  then it will skip that benchmark.
+
+
+## [v1.5.6] - 2021-12-10
+### Fixed
+- When benchmarking a token classification dataset with a model whose tokenizer
+  does not have a fast variant yet, this raised an error as the `word_ids`
+  method of `BatchEncoding` objects only works when the tokenizer is fast. In
+  that case these word IDs are now computed manually. This can currently handle
+  WordPiece and SentencePiece prefixes (i.e., `##` and `▁`), and will raise an
+  error if the manual alignment of words and tokens fail.
+- Catch the CUDA error `CUDA error: CUBLAS_STATUS_ALLOC_FAILED`, which in this
+  case is due to OOM.
+
+
+## [v1.5.5] - 2021-12-08
+### Fixed
+- Deal with CUDA OOM errors when they occur on a replica, when multiple cores
+  are used.
+
+
+## [v1.5.4] - 2021-12-08
+### Fixed
+- Remove reference to `trainer` when CUDA OOM error is dealt with.
+
+
+## [v1.5.3] - 2021-12-08
+### Fixed
+- Only try to to merge the `id2label` and `label2id` conversions if the model
+  is finetuned. This caused some errors when a model was not finetuned but
+  somehow still had conversion dictionaries.
+
+
+## [v1.5.2] - 2021-12-08
+### Fixed
+- Deal with models with tasks `feature-extraction` or `sentence-similarity` as
+  if they were `fill-mask`, meaning assume that they are merely pretrained
+  models, rather than finetuned.
+
+
+## [v1.5.1] - 2021-11-27
+### Fixed
+- Fixed bug when evaluating a finetuned model.
+
+
+## [v1.5.0] - 2021-11-26
+### Changed
+- Added progress bar description when evaluating models without finetuning them
+  first.
+- Lowered the package requirements to the earliest possible versions.
+
+### Removed
+- Removed support for TensorFlow and Jax models, due to them not working
+  properly anyway. They might be included at a later point, properly.
+
+
+## [v1.4.0] - 2021-11-25
+### Changed
+- Now also outputting aggregated metrics in the resulting
+  `scandeval_benchmark_results.json` file. This `json` file now has keys
+  `raw_metrics` and `total`, with `raw_metrics` containing the previous (raw)
+  scores, and the value of the new `total` key has aggregated scores (means and
+  standard errors).
+
+
+## [v1.3.8] - 2021-11-25
+### Changed
+- All training/evaluation progress bars are now removed when they are finished,
+  and the training progress bar has no total anymore, as it was misleading.
+
+
+## [v1.3.7] - 2021-11-25
+### Fixed
+- Removed `transformers` logging during evaluation as well.
+
+
+## [v1.3.6] - 2021-11-25
+### Changed
+- Now only updating the list of benchmarks in the `Benchmark` during
+  initialisation, and also logs it. This should make subsequent calls to the
+  `benchmark` method faster.
+
+### Fixed
+- Removed `transformers` logging properly.
+
+
+## [v1.3.5] - 2021-11-23
+### Fixed
+- Set the number of warmup steps to be the intended one training set pass,
+  where previously it was effectively 8x that amount, due to gradient
+  accumulation.
+- Added the NER label synonyms `OBJORG=ORG`, `LOCPRS=LOC`, `LOCORG=LOC` and
+  `ORGPRS=ORG`.
+- Explicitly added `numpy` to the `install_requires` list. This is normally not
+  a problem, as it's a requirement for other required packages, but this
+  depends on the order in which the requirements are installed. This avoids
+  such errors caused by misordering the requirements.
+
+
+## [v1.3.4] - 2021-11-11
+### Fixed
+- Indexing error during synonym setup of finetuned models.
+
+
+## [v1.3.3] - 2021-11-11
+### Fixed
+- When a finetuned model has labels which are synonyms of each other, they are
+  now properly treated as synonyms, where previously this caused the model to
+  have misaligned `id2label` and `label2id` conversion dictionaries.
+
+
+## [v1.3.2] - 2021-11-11
+### Fixed
+- Added the NER label synonyms `GPE_LOC=LOC`, `GPE_ORG=ORG`, `LOC/ORG=LOC`,
+  `ORG/PRS=ORG`, `OBJ/ORG=ORG`, as Norwegian and Swedish models tend to use
+  these.
+
+
+## [v1.3.1] - 2021-11-11
+### Fixed
+- Fixed a bug in label synonyms when benchmarking a finetuned spaCy for NER.
+
+
+## [v1.3.0] - 2021-11-11
+### Added
+- Added label synonyms for NER benchmarking, which will enforce a more fair
+  comparison of finetuned NER models, if the models have been trained on
+  datasets with different labelling (e.g., `Person` instead of `PER`).
+
+
+## [v1.2.1] - 2021-11-11
 ### Removed
 - Properly removed the Icelandic WikiANN-IS data files. It was removed from the
   package, but the underlying files were still lying in the repository.

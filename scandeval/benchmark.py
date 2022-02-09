@@ -36,6 +36,15 @@ class Benchmark:
             Whether to evaluate the training set as well. Defaults to False.
         verbose (bool, optional):
             Whether to output additional output. Defaults to False.
+
+    Attributes:
+        progress_bar (bool): Whether progress bars should be shown.
+        save_results (bool): Whether to save the benchmark results.
+        language (str or list of str): The languages to include in the list.
+        task (str or list of str): The tasks to consider in the list.
+        evaluate_train (bool): Whether to evaluate the training set as well.
+        verbose (bool): Whether to output additional output.
+        benchmark_results (dict): The benchmark results.
     '''
     def __init__(self,
                  progress_bar: bool = True,
@@ -69,9 +78,10 @@ class Benchmark:
             logging_level = logging.INFO
         logger.setLevel(logging_level)
 
-        # Set number of visible GPUS to be at most one, as otherwise errors
-        # appear with tensors being on separate devices
-        os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+        # Update the list of benchmarks
+        logger.info('Updating the list of benchmark datasets')
+        self._update_benchmarks(evaluate_train=evaluate_train,
+                                verbose=verbose)
 
     def _update_benchmarks(self, **params):
         '''Updates the internal list of all benchmarks.
@@ -273,7 +283,10 @@ class Benchmark:
             verbose = self.verbose
 
         # Update benchmark list
-        self._update_benchmarks(evaluate_train=evaluate_train, verbose=verbose)
+        if (evaluate_train != self.evaluate_train or verbose != self.verbose):
+            logger.info('Updating the list of benchmark datasets')
+            self._update_benchmarks(evaluate_train=evaluate_train,
+                                    verbose=verbose)
 
         # Ensure that `language` is a list
         if language == 'all':
